@@ -41,13 +41,15 @@ Own the normalized bundle catalogue, GHS pricing and agent commissions, order/pa
 | Component | Technology |
 |-----------|-----------|
 | **Language** | TypeScript |
-| **Framework** | React + Next.js |
+| **Framework** | React + Vite |
 | **Package Manager** | npm |
-| **Test Runner** | vitest |
-| **Mocking Library** | vi.mock |
+| **Test Runner** | Vitest |
+| **Mocking Library** | Vitest |
 | **Test Command** | npm test |
 
-Responsive customer experience for phones, tablets, and laptops; no native app at launch. Include network and bundle discovery, recipient entry, checkout, receipts, and purchase/refund status. Keep low-friction checkout while supporting customer purchase history.
+Use a client-rendered SPA because the storefront and operations workspaces are interactive, authenticated application surfaces rather than content-led pages. Vite provides a small build and development toolchain without adding a server-rendering layer; React Router owns the `/`, `/orders`, `/agent`, and `/business` routes. Serve the built assets from static hosting and send `/api/*` requests to the separately deployed FastAPI service. This replaces the earlier Next.js proposal and does not change the Python API or worker runtimes.
+
+Use lightweight, project-owned React components and CSS rather than Fluent UI: the required marketplace visual language is bespoke, and the app does not need a component-library dependency. Keep the storefront responsive on phones, tablets, and laptops; no native app at launch. Include network and bundle discovery, recipient entry, checkout, receipts, and purchase/refund status. Keep low-friction checkout while supporting customer purchase history. Until verified catalogue and payment APIs are integrated, show explicit unavailable/connection-required states instead of offers, prices, or successful transactions.
 
 ## 4. Fulfillment Worker — worker
 
@@ -68,7 +70,8 @@ Dispatch only after the gateway confirms the payment state required by its trans
 
 | Azure Service | Role in App | Environment Variable | Default Value (Local) | Classification |
 |---------------|------------|----------------------|-----------------------|----------------|
-| Azure Container Apps | Host the Next.js web app and FastAPI API | `PORT` / `API_BASE_URL` | `3000` / `http://localhost:8000` | Essential |
+| Azure Container Apps | Host the FastAPI API | `PORT` / `API_BASE_URL` | `8000` / `http://localhost:8000` | Essential |
+| Static web hosting | Serve the built React + Vite storefront and route API requests to the API service | `API_BASE_URL` | `/api` (local development proxy) | Essential |
 | Azure Functions | Run queue-triggered fulfillment and reconciliation work | `AzureWebJobsStorage` | `UseDevelopmentStorage=true` | Essential |
 | PostgreSQL Flexible Server | Store catalogue, orders, payment state, agent settings, prices, commissions, and audit records | `DATABASE_URL` | `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/falaaa` | Essential |
 | Azure Queue Storage | Durable asynchronous fulfillment and exception work | `STORAGE_CONNECTION_STRING` | `UseDevelopmentStorage=true` | Essential |
@@ -103,7 +106,7 @@ Verify every `❓` item before local debugging or scaffold execution; this envir
 
 ## 7. Design System & UI
 
-**Component Library**: Fluent UI v9
+**Component Library**: Project-owned React components and CSS; no UI library
 **Style Direction**: A crisp, transaction-first Ghanaian connectivity marketplace: bright, high-contrast surfaces for fast bundle comparison, with a restrained green brand anchor and warm gold/coral status accents. Keep operational tables compact and expose price, cost, margin, and transaction state without decorative clutter.
 **Typography**: Aptos with system sans-serif fallbacks; use tabular figures for GHS amounts and transaction identifiers.
 
@@ -167,7 +170,7 @@ falaaa/
 │   ├── project-plan.md
 │   └── .preview-temp/
 ├── apps/
-│   └── storefront/                 # React + Next.js, customer and agent routes
+│   └── storefront/                 # React + Vite + TypeScript SPA
 ├── services/
 │   ├── purchase-api/               # FastAPI routes, domain services, adapters
 │   │   ├── app/api/
