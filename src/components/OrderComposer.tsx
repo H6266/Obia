@@ -1,13 +1,77 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { networks, type NetworkId } from "../data/networks";
+import { createOrder, getBundles, type Bundle, type PurchaseOrder } from "../lib/api";
 import { isValidGhanaPhone, maskPhoneNumber } from "../lib/phone";
 import { Icon, NetworkMark, NetworkSelector } from "./Ui";
 
 export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
   const [network, setNetwork] = useState<NetworkId | null>(null);
   const [phone, setPhone] = useState("");
+  const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [bundleId, setBundleId] = useState("");
+  const [loadingBundles, setLoadingBundles] = useState(false);
+  const [catalogueError, setCatalogueError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [createdOrder, setCreatedOrder] = useState<PurchaseOrder | null>(null);
   const selectedNetwork = networks.find((item) => item.id === network);
+  const selectedBundle = bundles.find((item) => item.id === bundleId);
   const phoneIsValid = isValidGhanaPhone(phone);
+
+  useEffect(() => {
+    if (!network) {
+      setBundles([]);
+      setBundleId("");
+      setCatalogueError("");
+      setLoadingBundles(false);
+      return;
+    }
+
+    let active = true;
+    setBundles([]);
+    setBundleId("");
+    setCatalogueError("");
+    setLoadingBundles(true);
+    getBundles(network)
+      .then((availableBundles) => {
+        if (active) setBundles(availableBundles);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setCatalogueError(
+            error instanceof Error ? error.message : "Could not load bundle options.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingBundles(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [network]);
+
+  async function submitPurchaseRequest() {
+    if (!network || !phoneIsValid || !selectedBundle || submitting) return;
+    setSubmitting(true);
+    setSubmitError("");
+    setCreatedOrder(null);
+    try {
+      const order = await createOrder({
+        phone,
+        network_id: network,
+        bundle_id: selectedBundle.id,
+      });
+      setCreatedOrder(order);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Could not create the purchase request.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <section
@@ -33,7 +97,15 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
       </div>
 
       <div className="composer-form">
-        <NetworkSelector value={network} onChange={setNetwork} compact />
+        <NetworkSelector
+          value={network}
+          onChange={(value) => {
+            setNetwork(value);
+            setCreatedOrder(null);
+            setSubmitError("");
+          }}
+          compact
+        />
 
         <div className="field-group">
           <label htmlFor={agentMode ? "agent-phone" : "recipient-phone"}>
@@ -49,7 +121,11 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
               id={agentMode ? "agent-phone" : "recipient-phone"}
               inputMode="tel"
               maxLength={18}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={(event) => {
+                setPhone(event.target.value);
+                setCreatedOrder(null);
+                setSubmitError("");
+              }}
               placeholder="024 000 0000"
               type="tel"
               value={phone}
@@ -67,19 +143,43 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
           <label htmlFor={agentMode ? "agent-bundle" : "bundle-choice"}>Choose a data bundle</label>
           <div className="select-wrap">
             <select
-              disabled
+              disabled={!network || loadingBundles || bundles.length === 0}
               id={agentMode ? "agent-bundle" : "bundle-choice"}
-              value=""
+              onChange={(event) => {
+                setBundleId(event.target.value);
+                setCreatedOrder(null);
+                setSubmitError("");
+              }}
+              value={bundleId}
               aria-describedby={agentMode ? "agent-catalogue-note" : "catalogue-note"}
             >
               <option value="">
-                {network ? "No verified bundles available yet" : "Select a network first"}
+                {!network
+                  ? "Select a network first"
+                  : loadingBundles
+                    ? "Loading available bundles…"
+                    : bundles.length
+                      ? "Choose a bundle"
+                      : "No bundles are available"}
               </option>
+              {bundles.map((bundle) => (
+                <option key={bundle.id} value={bundle.id}>
+                  {bundle.name} — GHS {Number(bundle.amount).toFixed(2)}
+                  {bundle.is_sample ? " (sample)" : ""}
+                </option>
+              ))}
             </select>
             <Icon name="chevron-down" size={17} />
           </div>
-          <span className="field-hint" id={agentMode ? "agent-catalogue-note" : "catalogue-note"}>
-            Bundle options will appear when supplier catalogues are connected.
+          <span
+            className={`field-hint${catalogueError ? " field-hint--error" : ""}`}
+            id={agentMode ? "agent-catalogue-note" : "catalogue-note"}
+            role={catalogueError ? "alert" : undefined}
+          >
+            {catalogueError ||
+              (selectedBundle?.is_sample
+                ? "Sample offer for development only; no live service or payment is attached."
+                : "Only offers returned by the backend can be selected.")}
           </span>
         </div>
       </div>
@@ -100,7 +200,11 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
               "Choose a network"
             )}
           </span>
-          <strong>GHS —</strong>
+          <strong>
+            {selectedBundle
+              ? `GHS ${Number(selectedBundle.amount).toFixed(2)}`
+              : "GHS —"}
+          </strong>
         </div>
         <div className="order-summary__line order-summary__line--subtle">
           <span>Sending to</span>
@@ -108,13 +212,29 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
         </div>
       </div>
 
-      <button className="button button--primary button--wide" disabled type="button">
-        Continue to payment
+      <button
+        className="button button--primary button--wide"
+        disabled={!network || !phoneIsValid || !selectedBundle || submitting}
+        onClick={submitPurchaseRequest}
+        type="button"
+      >
+        {submitting ? "Creating request…" : "Create purchase request"}
         <Icon name="arrow-right" size={17} />
       </button>
+      {submitError && <p className="field-hint field-hint--error" role="alert">{submitError}</p>}
+      {createdOrder && (
+        <div className="order-result" role="status">
+          <strong>Purchase request created</strong>
+          <span>Reference: {createdOrder.reference}</span>
+          <span>Status: {createdOrder.status.replaceAll("_", " ")}</span>
+          {createdOrder.is_sample && (
+            <span>Sample order only. No payment or delivery has been initiated.</span>
+          )}
+        </div>
+      )}
       <p className="composer-note">
         <Icon name="lock" size={14} />
-        Mobile money PINs are entered only with your payment provider, never here.
+        No payment is taken here. Mobile money PINs are never requested or stored.
       </p>
     </section>
   );

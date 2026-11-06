@@ -1,0 +1,13 @@
+{
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": {
+      "label": "Falaaa frontend",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "Falaaa API",
+      "onAutoForward": "notify"
+    }
+  }
+}

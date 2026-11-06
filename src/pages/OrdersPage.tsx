@@ -1,21 +1,39 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { DataState, Icon, NoticeBanner, PageIntro } from "../components/Ui";
+import { getOrder, type PurchaseOrder } from "../lib/api";
 
 type OrderFilter = "all" | "in-progress" | "complete";
 
 export function OrdersPage() {
   const [reference, setReference] = useState("");
   const [filter, setFilter] = useState<OrderFilter>("all");
-  const [message, setMessage] = useState("");
+  const [order, setOrder] = useState<PurchaseOrder | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleTrack(event: FormEvent<HTMLFormElement>) {
+  async function handleTrack(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage(
-      reference.trim()
-        ? "Order tracking is not connected yet. No lookup was sent and no order status has been retrieved."
-        : "Enter an order reference to check its status once tracking is connected.",
-    );
+    if (!reference.trim()) {
+      setError("Enter an order reference.");
+      setOrder(null);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setOrder(null);
+    try {
+      setOrder(await getOrder(reference));
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not retrieve this order.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -24,7 +42,7 @@ export function OrdersPage() {
         <PageIntro
           eyebrow="YOUR FALAAA ACCOUNT"
           title="Orders, without the guesswork."
-          description="Look up an order by reference or review your recent activity in one place."
+          description="Look up an order by reference. Customer order history will be available after secure sign-in is integrated."
           actions={
             <Link className="button button--primary" to="/">
               Buy data
@@ -48,17 +66,34 @@ export function OrdersPage() {
               id="order-reference"
               onChange={(event) => {
                 setReference(event.target.value);
-                setMessage("");
+                setError("");
+                setOrder(null);
               }}
               placeholder="e.g. FLA-123456"
               value={reference}
             />
-            <button className="button button--primary" type="submit">
-              Track order
+            <button className="button button--primary" disabled={loading} type="submit">
+              {loading ? "Looking up…" : "Track order"}
               <Icon name="arrow-right" size={16} />
             </button>
           </form>
-          {message && <p className="form-feedback" role="status">{message}</p>}
+          {error && <p className="form-feedback field-hint--error" role="alert">{error}</p>}
+          {order && (
+            <div className="order-lookup-result" aria-live="polite">
+              <div>
+                <span className="eyebrow">ORDER {order.reference}</span>
+                <strong>{order.network} · {order.bundle}</strong>
+                <span>Recipient {order.customer_phone}</span>
+              </div>
+              <div className="order-lookup-result__state">
+                <strong>GHS {Number(order.amount).toFixed(2)} {order.currency}</strong>
+                <span>Status: {order.status.replaceAll("_", " ")}</span>
+              </div>
+              {order.is_sample && (
+                <p>Sample order only. No payment or delivery has been initiated.</p>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="history-section" aria-labelledby="history-title">
@@ -88,7 +123,7 @@ export function OrdersPage() {
                 </button>
               ))}
             </div>
-            <span className="history-toolbar__hint">No customer history is stored in this preview.</span>
+            <span className="history-toolbar__hint">History requires secure customer sign-in.</span>
           </div>
 
           <div className="history-table-wrap">
@@ -104,16 +139,16 @@ export function OrdersPage() {
                 </tr>
               </thead>
             </table>
-            <DataState icon="receipt" title="Your orders will appear here">
+            <DataState icon="receipt" title="Sign-in is required for order history">
               {filter === "all"
-                ? "Once connected, you’ll find receipts and clear payment and delivery updates here."
-                : `There are no ${filter === "complete" ? "completed" : "in-progress"} orders to show in this preview.`}
+                ? "Order history requires customer sign-in, which is not configured. You can still look up an order by its private reference above."
+                : `Customer sign-in is required to show ${filter === "complete" ? "completed" : "in-progress"} order history.`}
             </DataState>
           </div>
         </section>
 
-        <NoticeBanner title="Order updates are not connected">
-          Payment, delivery, cancellation, and refund statuses will be retrieved from the backend when order tracking is available.
+        <NoticeBanner title="Payment and delivery are not connected">
+          The current backend can return an order’s recorded status. Payment confirmation, supplier fulfillment, cancellation, and refunds require verified provider integrations.
         </NoticeBanner>
       </div>
     </main>
