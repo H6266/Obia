@@ -7,7 +7,11 @@
 - Keep catalogue fixtures and prices visibly identified as samples. Never imply that a sample offer is live or can be fulfilled.
 - Validate Ghanaian phone numbers with `phonenumbers`; normalize stored values to E.164 and expose only masked numbers in order responses.
 - Keep orders `pending_payment` until a verified payment event exists. Route all state changes through `app/services/order_service.py`; never expose public status mutation or fulfillment actions.
-- Do not add pretend OTP, payment, supplier, or admin authorization. Customer history and admin operations require a real identity/authorization provider before exposure.
+- Customer sessions use opaque HttpOnly cookies and CSRF validation; keep protected API routes protected server-side. Do not treat customer role as administrative authorization.
+- Argon2id hashes are the only stored passwords. Never store session tokens in the browser's localStorage or log passwords, cookies, CSRF tokens, or OTPs.
+- Do not simulate SMS, password recovery, payment, supplier delivery, or admin authorization. Mark phone accounts unverified and expose provider-dependent operations as unavailable until a real provider exists.
+- Keep account ownership distinct from recipient phone numbers. Customer order history must query the authenticated account owner and must not expose legacy guest orders.
+- Apply rate limits to registration, login, recovery, and verification endpoints; keep them shared across API workers (the current database-backed limit buckets are deliberate).
 - Keep secrets in environment configuration or a managed secret store. Never commit `.env` files, API keys, payment PINs, passwords, or OTPs.
 - Frontend API calls belong in `src/lib/api.ts`. Use `VITE_API_BASE_URL` for the API base and the configurable Vite proxy for local development; do not hardcode Codespaces forwarding URLs.
 - Surface loading, API error, and unverified/sample states in the UI; do not show success unless the backend confirms the request.

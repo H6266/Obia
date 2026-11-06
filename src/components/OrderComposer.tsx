@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
 import { networks, type NetworkId } from "../data/networks";
 import { createOrder, getBundles, type Bundle, type PurchaseOrder } from "../lib/api";
 import { isValidGhanaPhone, maskPhoneNumber } from "../lib/phone";
 import { Icon, NetworkMark, NetworkSelector } from "./Ui";
 
 export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
+  const { customer } = useAuth();
   const [network, setNetwork] = useState<NetworkId | null>(null);
   const [phone, setPhone] = useState("");
   const [bundles, setBundles] = useState<Bundle[]>([]);
@@ -17,6 +19,10 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
   const selectedNetwork = networks.find((item) => item.id === network);
   const selectedBundle = bundles.find((item) => item.id === bundleId);
   const phoneIsValid = isValidGhanaPhone(phone);
+
+  useEffect(() => {
+    if (customer && !phone) setPhone(customer.phone);
+  }, [customer, phone]);
 
   useEffect(() => {
     if (!network) {

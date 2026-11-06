@@ -26,13 +26,13 @@ export function InfoPage() {
             <h2>{privacy ? "Your data matters." : "Clear terms are part of a fair service."}</h2>
             <p>
               {privacy
-                ? "Falaaa does not request mobile money PINs. Account, order, and contact data practices will be described here before any customer information is collected."
+                ? "Falaaa never requests mobile money PINs. Account information is stored by the backend; passwords are Argon2id-hashed and sessions use HttpOnly cookies. The full privacy policy is still a draft and must be reviewed before launch."
                 : "This page is a placeholder. Service terms, payment conditions, delivery expectations, cancellations, and refund rules will be documented here before launch."}
             </p>
           </div>
         </div>
         <NoticeBanner title="Policy content is not final">
-          This demonstration frontend does not collect or transmit customer information to a backend.
+          These policy pages are drafts and are not a substitute for reviewed launch policies.
         </NoticeBanner>
       </div>
     </main>

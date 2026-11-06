@@ -17,6 +17,7 @@ def test_invalid_status_transition_is_rejected(client) -> None:
             Order(
                 reference="FLA-test-reference",
                 customer_id=customer.id,
+                recipient_phone=customer.phone,
                 bundle_id="mtn-sample-1gb",
                 network_id="mtn",
                 amount=1,

@@ -576,6 +576,49 @@ p { color: var(--muted); }
 .order-lookup-result strong { color: var(--green-dark); }
 .order-lookup-result__state { text-align: right; }
 .order-lookup-result > p { grid-column: 1 / -1; margin: 0; color: #728078; }
+.history-table td { min-height: 43px; padding: 12px 17px; border-bottom: 1px solid #edf1ed; color: #4a5a50; font-size: 10px; }
+.text-button { padding: 0; border: 0; background: transparent; color: var(--green); font-weight: 700; cursor: pointer; }
+.text-button:hover { text-decoration: underline; }
+
+.account-page { display: grid; min-height: 68vh; place-items: center; padding: 55px 20px 80px; background: #f4f7f4; }
+.account-card { width: min(100%, 490px); padding: 34px; border: 1px solid #dce5dd; border-radius: 18px; background: #fff; box-shadow: var(--shadow-card); }
+.account-card h1 { margin: 7px 0 8px; font-size: clamp(27px, 5vw, 35px); letter-spacing: -0.045em; }
+.account-card > p { margin: 0 0 24px; color: var(--muted); font-size: 12px; }
+.account-form { display: grid; gap: 9px; }
+.account-form > label:not(.account-checkbox) { margin-top: 6px; color: #3a4b41; font-size: 11px; font-weight: 700; }
+.account-form input:not([type="checkbox"]) { width: 100%; min-height: 45px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; color: var(--ink); font-size: 12px; }
+.account-form input[aria-invalid="true"] { border-color: #b94b40; }
+.account-field-hint { color: #829087; font-size: 10px; }
+.account-field-error, .account-error { color: #a23d34; font-size: 10px; font-weight: 600; }
+.account-error, .account-success { margin: 4px 0; padding: 10px 12px; border-radius: 8px; background: #fff1ef; }
+.account-success { color: #176444; font-size: 10px; font-weight: 600; background: #eef7f0; }
+.account-checkbox { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 1px; color: #53635a; font-size: 10px; }
+.account-checkbox input { width: 15px; height: 15px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--green); }
+.account-checkbox a, .account-switch a, .account-form__trailing a { color: var(--green); font-weight: 700; }
+.account-checkbox a:hover, .account-switch a:hover, .account-form__trailing a:hover { text-decoration: underline; }
+.account-form > .button { margin-top: 6px; }
+.account-switch { margin: 18px 0 0 !important; color: #617168; font-size: 11px !important; text-align: center; }
+.account-provider-note { margin-top: 18px; padding: 11px 12px; border: 1px solid #e8dfc7; border-radius: 9px; background: #fffaf0; color: #6d6249; font-size: 10px; line-height: 1.5; }
+.account-form__trailing { display: flex; justify-content: flex-end; margin-top: -3px; font-size: 10px; }
+.password-control { position: relative; }
+.password-control input { padding-right: 58px !important; }
+.password-control button { position: absolute; top: 50%; right: 12px; padding: 4px; transform: translateY(-50%); border: 0; background: transparent; color: var(--green); font-size: 10px; font-weight: 700; cursor: pointer; }
+.account-loading { padding: 25px; color: var(--muted); font-size: 12px; text-align: center; }
+.account-details-card { margin-bottom: 35px; padding: 25px; border: 1px solid #dce5dd; border-radius: 15px; background: #fff; box-shadow: var(--shadow-card); }
+.account-details-card__heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.account-details-card__heading h2 { margin: 5px 0 0; font-size: 20px; }
+.account-details-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 22px 0 0; }
+.account-details-card dl > div { display: grid; gap: 3px; }
+.account-details-card dt { color: var(--muted); font-size: 10px; }
+.account-details-card dd { margin: 0; color: var(--ink); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.account-verification { padding: 6px 10px; border-radius: 999px; background: #fff5dd; color: #7a5a11; font-size: 9px; font-weight: 700; }
+.account-verification.is-verified { background: #e8f4eb; color: #176444; }
+.account-verification-action { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.account-verification-action .button { min-height: 38px; font-size: 10px; }
+.account-verification-action > span { color: var(--muted); font-size: 9px; }
+.dashboard-orders .history-table-wrap { overflow-x: auto; }
+.dashboard-orders .history-table { min-width: 700px; }
+.header-account-error { margin: 0; padding: 5px 20px; background: #fff1ef; color: #a23d34; font-size: 10px; text-align: center; }
 .history-section { margin: 0 0 28px; }
 .section-heading--compact { align-items: center; margin-bottom: 19px; }
 .section-heading--compact h2 { margin: 6px 0 0; font-size: 24px; }
@@ -742,6 +785,13 @@ p { color: var(--muted); }
 }
 
 @media (max-width: 620px) {
+  .account-page { padding: 32px 16px 55px; }
+  .account-card { padding: 25px 20px; }
+  .account-details-card { padding: 18px; }
+  .account-details-card dl { grid-template-columns: 1fr; gap: 13px; }
+  .account-verification-action { align-items: flex-start; flex-direction: column; }
+  .order-lookup-result { grid-template-columns: 1fr; }
+  .order-lookup-result__state { text-align: left; }
   html { scroll-padding-top: 76px; }
   .site-header { height: 64px; }
   .site-header__inner { padding-right: 17px; padding-left: 17px; }

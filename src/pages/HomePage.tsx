@@ -263,10 +263,7 @@ export function HomePage() {
           <h2>Need a hand?</h2>
           <p>Our customer support team will be here to help with your orders and questions.</p>
         </div>
-        <a className="button button--outline" href="mailto:support@falaaa.example">
-          Contact support
-          <Icon name="arrow-up-right" size={16} />
-        </a>
+        <span className="support-cta__contact">Support contact details pending launch</span>
         <span className="support-cta__note">Contact details are placeholders until launch.</span>
       </section>
     </main>

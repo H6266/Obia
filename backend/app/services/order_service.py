@@ -45,7 +45,9 @@ class InvalidStatusTransition(Exception):
     pass
 
 
-def create_order(db: Session, request: OrderCreate) -> Order:
+def create_order(
+    db: Session, request: OrderCreate, owner: Customer | None = None
+) -> Order:
     network = db.get(Network, request.network_id)
     if network is None:
         raise LookupError("Unknown network.")
@@ -55,7 +57,7 @@ def create_order(db: Session, request: OrderCreate) -> Order:
         raise LookupError("Bundle is not available for the selected network.")
 
     phone = normalize_ghana_phone(request.phone)
-    customer = db.scalar(select(Customer).where(Customer.phone == phone))
+    customer = owner or db.scalar(select(Customer).where(Customer.phone == phone))
     if customer is None:
         customer = Customer(phone=phone)
         db.add(customer)
@@ -64,6 +66,8 @@ def create_order(db: Session, request: OrderCreate) -> Order:
     order = Order(
         reference=f"FLA-{secrets.token_urlsafe(18)}",
         customer_id=customer.id,
+        account_owner_id=owner.id if owner else None,
+        recipient_phone=phone,
         bundle_id=bundle.id,
         network_id=network.id,
         amount=bundle.amount,

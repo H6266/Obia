@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime
 from decimal import Decimal
 
@@ -24,9 +25,13 @@ class Order(Base):
     __tablename__ = "orders"
 
     reference: Mapped[str] = mapped_column(String(48), primary_key=True)
-    customer_id: Mapped[str] = mapped_column(
+    customer_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("customers.id", ondelete="RESTRICT"), index=True, nullable=False
     )
+    account_owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    recipient_phone: Mapped[str] = mapped_column(String(16), nullable=False)
     bundle_id: Mapped[str] = mapped_column(
         ForeignKey("bundles.id", ondelete="RESTRICT"), index=True, nullable=False
     )
@@ -49,6 +54,8 @@ class Order(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    customer: Mapped["Customer"] = relationship(back_populates="orders")
+    customer: Mapped["Customer"] = relationship(
+        back_populates="orders", foreign_keys=[customer_id]
+    )
     bundle: Mapped["Bundle"] = relationship()
     network: Mapped["Network"] = relationship()

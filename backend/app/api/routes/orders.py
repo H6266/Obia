@@ -3,17 +3,27 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models import Order
+from app.core.security import optional_customer, require_csrf_for_session
+from app.models import Customer, Order
 from app.schemas.order import OrderCreate, OrderRead, serialize_order
 from app.services.order_service import create_order
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
-@router.post("", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
-def submit_order(request: OrderCreate, db: Session = Depends(get_db)) -> OrderRead:
+@router.post(
+    "",
+    response_model=OrderRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_csrf_for_session)],
+)
+def submit_order(
+    request: OrderCreate,
+    db: Session = Depends(get_db),
+    customer: Customer | None = Depends(optional_customer),
+) -> OrderRead:
     try:
-        return serialize_order(create_order(db, request))
+        return serialize_order(create_order(db, request, customer))
     except LookupError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
 

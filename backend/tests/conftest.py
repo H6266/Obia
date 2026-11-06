@@ -12,7 +12,7 @@ from app.models import Base, Bundle, Network
 
 
 @pytest.fixture
-def client() -> Generator[TestClient, None, None]:
+def db_session_factory() -> Generator[sessionmaker[Session], None, None]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -41,14 +41,20 @@ def client() -> Generator[TestClient, None, None]:
                 )
             )
         db.commit()
+    yield TestingSession
+    Base.metadata.drop_all(engine)
+    engine.dispose()
 
+
+@pytest.fixture
+def client(
+    db_session_factory: sessionmaker[Session],
+) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
-        with TestingSession() as db:
+        with db_session_factory() as db:
             yield db
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    Base.metadata.drop_all(engine)
-    engine.dispose()

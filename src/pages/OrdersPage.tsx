@@ -1,20 +1,67 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 import { DataState, Icon, NoticeBanner, PageIntro } from "../components/Ui";
-import { getOrder, type PurchaseOrder } from "../lib/api";
+import { getCustomerOrders, getOrder, type PurchaseOrder } from "../lib/api";
 
 type OrderFilter = "all" | "in-progress" | "complete";
 
 export function OrdersPage() {
-  const [reference, setReference] = useState("");
+  const [searchParams] = useSearchParams();
+  const { customer, loading: authLoading } = useAuth();
+  const [reference, setReference] = useState(searchParams.get("reference") ?? "");
   const [filter, setFilter] = useState<OrderFilter>("all");
   const [order, setOrder] = useState<PurchaseOrder | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<PurchaseOrder[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const initialReference = searchParams.get("reference");
 
-  async function handleTrack(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!reference.trim()) {
+  useEffect(() => {
+    if (authLoading || !customer) {
+      setHistory([]);
+      return;
+    }
+    let active = true;
+    setHistoryLoading(true);
+    setHistoryError("");
+    getCustomerOrders()
+      .then((orders) => {
+        if (active) setHistory(orders);
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setHistoryError(
+            requestError instanceof Error ? requestError.message : "Could not load order history.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [authLoading, customer]);
+
+  useEffect(() => {
+    if (!initialReference) return;
+    setReference(initialReference);
+    void trackOrder(initialReference);
+  }, [initialReference]);
+
+  const visibleHistory = history.filter((item) => {
+    if (filter === "complete") return item.status === "completed";
+    if (filter === "in-progress") {
+      return !["completed", "failed", "cancelled", "refunded"].includes(item.status);
+    }
+    return true;
+  });
+
+  async function trackOrder(orderReference: string) {
+    if (!orderReference.trim()) {
       setError("Enter an order reference.");
       setOrder(null);
       return;
@@ -24,7 +71,7 @@ export function OrdersPage() {
     setError("");
     setOrder(null);
     try {
-      setOrder(await getOrder(reference));
+      setOrder(await getOrder(orderReference));
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -36,13 +83,18 @@ export function OrdersPage() {
     }
   }
 
+  function handleTrack(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void trackOrder(reference);
+  }
+
   return (
     <main className="workspace-page" id="main-content" tabIndex={-1}>
       <div className="workspace-container">
         <PageIntro
           eyebrow="YOUR FALAAA ACCOUNT"
           title="Orders, without the guesswork."
-          description="Look up an order by reference. Customer order history will be available after secure sign-in is integrated."
+          description="Look up any order by reference, or review orders linked to your signed-in account."
           actions={
             <Link className="button button--primary" to="/">
               Buy data
@@ -102,7 +154,7 @@ export function OrdersPage() {
               <span className="eyebrow">ORDER HISTORY</span>
               <h2 id="history-title">Your recent orders</h2>
             </div>
-            <span className="demo-label"><span /> Account connection required</span>
+            <span className="demo-label"><span /> {customer ? "Account orders" : "Sign in to view history"}</span>
           </div>
 
           <div className="history-toolbar">
@@ -123,7 +175,9 @@ export function OrdersPage() {
                 </button>
               ))}
             </div>
-            <span className="history-toolbar__hint">History requires secure customer sign-in.</span>
+            <span className="history-toolbar__hint">
+              {customer ? "Showing orders linked to your account." : "Sign in to see your account history."}
+            </span>
           </div>
 
           <div className="history-table-wrap">
@@ -138,12 +192,43 @@ export function OrdersPage() {
                   <th scope="col"><span className="sr-only">Details</span></th>
                 </tr>
               </thead>
+              {visibleHistory.length > 0 && (
+                <tbody>
+                  {visibleHistory.map((item) => (
+                    <tr key={item.reference}>
+                      <td>{item.reference}</td>
+                      <td>{item.network}</td>
+                      <td>{item.customer_phone}</td>
+                      <td>GHS {Number(item.amount).toFixed(2)}</td>
+                      <td>{item.status.replaceAll("_", " ")}</td>
+                      <td>
+                        <button
+                          className="text-button"
+                          onClick={() => {
+                            setReference(item.reference);
+                            void trackOrder(item.reference);
+                          }}
+                          type="button"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              )}
             </table>
-            <DataState icon="receipt" title="Sign-in is required for order history">
-              {filter === "all"
-                ? "Order history requires customer sign-in, which is not configured. You can still look up an order by its private reference above."
-                : `Customer sign-in is required to show ${filter === "complete" ? "completed" : "in-progress"} order history.`}
-            </DataState>
+            {historyLoading ? (
+              <div className="account-loading" role="status">Loading your order history…</div>
+            ) : historyError ? (
+              <p className="account-error" role="alert">{historyError}</p>
+            ) : visibleHistory.length === 0 ? (
+              <DataState icon="receipt" title={customer ? "No matching orders" : "Sign in for order history"}>
+                {customer
+                  ? `There are no ${filter === "all" ? "" : `${filter === "complete" ? "completed" : "in-progress"} `}orders in this view.`
+                  : <>You can still track an order by reference above, or <Link to="/login">sign in</Link> to view your account history.</>}
+              </DataState>
+            ) : null}
           </div>
         </section>
 

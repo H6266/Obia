@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 import phonenumbers
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from phonenumbers import PhoneNumberFormat, PhoneNumberType
 
 
@@ -42,3 +42,63 @@ class CustomerPhone(BaseModel):
     @classmethod
     def validate_phone(cls, value: str) -> str:
         return normalize_ghana_phone(value)
+
+
+class RegisterRequest(CustomerPhone):
+    full_name: str = Field(min_length=2, max_length=100)
+    password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 2 or not any(character.isalpha() for character in normalized):
+            raise ValueError("Enter your full name.")
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if not any(character.isalpha() for character in value) or not any(
+            character.isdigit() for character in value
+        ):
+            raise ValueError("Password must contain at least one letter and one number.")
+        return value
+
+
+class LoginRequest(CustomerPhone):
+    password: str = Field(min_length=1, max_length=128)
+
+
+class PasswordRecoveryRequest(CustomerPhone):
+    pass
+
+
+class PasswordResetRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if not any(character.isalpha() for character in value) or not any(
+            character.isdigit() for character in value
+        ):
+            raise ValueError("Password must contain at least one letter and one number.")
+        return value
+
+
+class PhoneVerificationRequest(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
+class CustomerAccount(BaseModel):
+    id: UUID
+    full_name: str
+    phone: str
+    phone_verified: bool
+    account_status: str
+    role: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

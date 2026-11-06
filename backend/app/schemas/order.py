@@ -38,7 +38,7 @@ def serialize_order(order: Order) -> OrderRead:
         network=order.network.name,
         bundle_id=order.bundle_id,
         bundle=order.bundle.name,
-        customer_phone=f"••• ••• {order.customer.phone[-3:]}",
+        customer_phone=f"••• ••• {order.recipient_phone[-3:]}",
         status=order.status,
         created_at=order.created_at,
         is_sample=order.bundle.is_sample,

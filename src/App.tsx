@@ -1,17 +1,24 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import {
   BrowserRouter,
   Link,
+  Navigate,
   NavLink,
   Route,
   Routes,
   useLocation,
 } from "react-router-dom";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { AgentPage } from "./pages/AgentPage";
 import { BusinessPage } from "./pages/BusinessPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { HomePage } from "./pages/HomePage";
 import { InfoPage } from "./pages/InfoPage";
+import { LoginPage } from "./pages/LoginPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { SignupPage } from "./pages/SignupPage";
 import { Icon } from "./components/Ui";
 
 const navigation = [
@@ -30,49 +37,19 @@ function Brand({ footer = false }: { footer?: boolean }) {
   );
 }
 
-function SignInDialog({ onClose }: { onClose: () => void }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
-
-  return (
-    <dialog
-      aria-labelledby="sign-in-title"
-      className="account-dialog"
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onClick={(event) => {
-        if (event.target === dialogRef.current) onClose();
-      }}
-      ref={dialogRef}
-    >
-      <div className="account-dialog__content">
-        <button aria-label="Close dialog" className="icon-button account-dialog__close" onClick={onClose} type="button">
-          <Icon name="close" size={19} />
-        </button>
-        <span className="account-dialog__mark"><Icon name="phone" size={21} /></span>
-        <span className="eyebrow">WELCOME TO FALAAA</span>
-        <h2 id="sign-in-title">Your account is coming soon.</h2>
-        <p>Secure phone verification will be available when Falaaa account services are connected.</p>
-        <div className="account-dialog__note">
-          <Icon name="lock" size={15} />
-          We will never ask for your mobile money PIN.
-        </div>
-        <button className="button button--primary button--wide" onClick={onClose} type="button">Got it</button>
-      </div>
-    </dialog>
-  );
-}
-
-function SiteHeader({ onSignIn }: { onSignIn: () => void }) {
+function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+  const { customer, loading, logout } = useAuth();
+
+  async function handleLogout() {
+    setLogoutError("");
+    try {
+      await logout();
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Could not sign out.");
+    }
+  }
 
   return (
     <header className="site-header">
@@ -89,10 +66,30 @@ function SiteHeader({ onSignIn }: { onSignIn: () => void }) {
               {item.label}
             </NavLink>
           ))}
-          <button className="main-nav__mobile-signin" onClick={onSignIn} type="button">Sign in</button>
+          {customer ? (
+            <>
+              <Link className="main-nav__mobile-signin" onClick={() => setMenuOpen(false)} to="/dashboard">My account</Link>
+              <button className="main-nav__mobile-signin" onClick={handleLogout} type="button">Sign out</button>
+            </>
+          ) : !loading && (
+            <>
+              <Link className="main-nav__mobile-signin" onClick={() => setMenuOpen(false)} to="/login">Sign in</Link>
+              <Link className="main-nav__mobile-signin" onClick={() => setMenuOpen(false)} to="/signup">Create an account</Link>
+            </>
+          )}
         </nav>
         <div className="site-header__actions">
-          <button className="signin-button" onClick={onSignIn} type="button">Sign in</button>
+          {customer ? (
+            <>
+              <Link className="signin-button" to="/dashboard">My account</Link>
+              <button className="signin-button" onClick={handleLogout} type="button">Sign out</button>
+            </>
+          ) : !loading && (
+            <>
+              <Link className="signin-button" to="/login">Sign in</Link>
+              <Link className="signin-button" to="/signup">Sign up</Link>
+            </>
+          )}
           <Link className="button button--primary header-buy" to="/#purchase">
             Buy data
             <Icon name="arrow-up-right" size={15} />
@@ -108,6 +105,7 @@ function SiteHeader({ onSignIn }: { onSignIn: () => void }) {
           <Icon name={menuOpen ? "close" : "menu"} size={21} />
         </button>
       </div>
+      {logoutError && <p className="header-account-error" role="alert">{logoutError}</p>}
     </header>
   );
 }
@@ -125,13 +123,14 @@ function SiteFooter() {
           <strong>Explore</strong>
           <Link to="/">Buy data</Link>
           <Link to="/orders">Track an order</Link>
+          <Link to="/dashboard">My account</Link>
           <Link to="/agent">Become an agent</Link>
         </div>
         <div className="site-footer__column">
           <strong>For business</strong>
           <Link to="/business">Business workspace</Link>
-          <a href="mailto:business@falaaa.example">Partner enquiries</a>
-          <a href="mailto:support@falaaa.example">Contact support</a>
+          <span>Partner enquiries (details pending)</span>
+          <span>Support contact (details pending)</span>
         </div>
         <div className="site-footer__column">
           <strong>Good to know</strong>
@@ -163,6 +162,10 @@ function ScrollToTop() {
     const titles: Record<string, string> = {
       "/": "Falaaa — Data that keeps Ghana moving",
       "/orders": "Your orders — Falaaa",
+      "/dashboard": "My Falaaa account",
+      "/signup": "Create an account — Falaaa",
+      "/login": "Sign in — Falaaa",
+      "/forgot-password": "Recover account — Falaaa",
       "/agent": "Agent workbench — Falaaa",
       "/business": "Business workspace — Falaaa",
       "/privacy": "Privacy — Falaaa",
@@ -175,16 +178,18 @@ function ScrollToTop() {
 }
 
 function AppRoutes() {
-  const [signInOpen, setSignInOpen] = useState(false);
-
   return (
     <div className="app-shell">
       <ScrollToTop />
       <a className="skip-link" href="#main-content">Skip to content</a>
-      <SiteHeader onSignIn={() => setSignInOpen(true)} />
+      <SiteHeader />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/signup" element={<GuestOnly><SignupPage /></GuestOnly>} />
+        <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
+        <Route path="/forgot-password" element={<GuestOnly><ForgotPasswordPage /></GuestOnly>} />
+        <Route path="/dashboard" element={<RequireCustomer><DashboardPage /></RequireCustomer>} />
         <Route path="/agent" element={<AgentPage />} />
         <Route path="/business" element={<BusinessPage />} />
         <Route path="/privacy" element={<InfoPage />} />
@@ -192,9 +197,28 @@ function AppRoutes() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       <SiteFooter />
-      {signInOpen && <SignInDialog onClose={() => setSignInOpen(false)} />}
     </div>
   );
+}
+
+function RequireCustomer({ children }: { children: ReactNode }) {
+  const { customer, loading } = useAuth();
+  const location = useLocation();
+  if (loading) {
+    return <main className="account-page" id="main-content"><p role="status">Checking your account…</p></main>;
+  }
+  if (!customer) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return children;
+}
+
+function GuestOnly({ children }: { children: ReactNode }) {
+  const { customer, loading } = useAuth();
+  if (loading) {
+    return <main className="account-page" id="main-content"><p role="status">Checking your account…</p></main>;
+  }
+  return customer ? <Navigate to="/dashboard" replace /> : children;
 }
 
 function NotFound() {
@@ -215,7 +239,9 @@ function NotFound() {
 export function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

@@ -6,6 +6,7 @@ import {
   PageIntro,
   StatusPill,
 } from "../components/Ui";
+import { getApiHealth } from "../lib/api";
 
 const modules = [
   { id: "catalogue", label: "Catalogue", icon: "spark" as const },
@@ -64,10 +65,26 @@ const tableHeaders: Record<ModuleId, string[]> = {
 export function BusinessPage() {
   const [activeModule, setActiveModule] = useState<ModuleId>("catalogue");
   const [connectionMessage, setConnectionMessage] = useState("");
+  const [checkingConnection, setCheckingConnection] = useState(false);
   const details = moduleDetails[activeModule];
 
-  function checkConnection() {
-    setConnectionMessage("Business API is not configured in this preview. No request was sent.");
+  async function checkConnection() {
+    setCheckingConnection(true);
+    setConnectionMessage("");
+    try {
+      const health = await getApiHealth();
+      setConnectionMessage(
+        health.database === "reachable"
+          ? "API and database are reachable. Business operations still require an authorized admin service."
+          : "The API is running, but the database is unavailable.",
+      );
+    } catch (error) {
+      setConnectionMessage(
+        error instanceof Error ? `Could not connect to the API: ${error.message}` : "Could not connect to the API.",
+      );
+    } finally {
+      setCheckingConnection(false);
+    }
   }
 
   return (
@@ -78,9 +95,9 @@ export function BusinessPage() {
           title="Operations, all in one place."
           description="Manage the details behind reliable mobile data delivery—from catalogue to reconciliation."
           actions={
-            <button className="button button--outline" onClick={checkConnection} type="button">
+            <button className="button button--outline" disabled={checkingConnection} onClick={checkConnection} type="button">
               <Icon name="refresh" size={16} />
-              Check connection
+              {checkingConnection ? "Checking…" : "Check connection"}
             </button>
           }
         />
@@ -141,18 +158,8 @@ export function BusinessPage() {
                 <h2>{details.title}</h2>
                 <p>{details.description}</p>
               </div>
-              {activeModule === "catalogue" && (
-                <button className="button button--primary" disabled type="button">
-                  <Icon name="plus" size={16} />
-                  Add bundle
-                </button>
-              )}
-              {activeModule === "reports" && (
-                <button className="button button--primary" disabled type="button">
-                  <Icon name="arrow-down" size={16} />
-                  Export report
-                </button>
-              )}
+              {activeModule === "catalogue" && <StatusPill tone="neutral">Editing requires admin access</StatusPill>}
+              {activeModule === "reports" && <StatusPill tone="neutral">Exports unavailable</StatusPill>}
             </div>
 
             {activeModule === "pricing" && (

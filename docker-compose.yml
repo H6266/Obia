@@ -21,6 +21,14 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://falaaa:${POSTGRES_PASSWORD:-falaaa-local-only}@db:5432/falaaa
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-falaaa_session}
+      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-falaaa_csrf}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-10}
+      AUTH_RATE_WINDOW_SECONDS: ${AUTH_RATE_WINDOW_SECONDS:-60}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
       - "8000:8000"
     depends_on:
