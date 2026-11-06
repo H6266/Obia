@@ -2,15 +2,17 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../lib/api";
-import { isValidGhanaPhone } from "../lib/phone";
+import { validateRegistration } from "../lib/authValidation";
 
 export function SignupPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -18,22 +20,30 @@ export function SignupPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const errors: Record<string, string> = {};
-    if (fullName.trim().length < 2) errors.full_name = "Enter your full name.";
-    if (!isValidGhanaPhone(phone)) errors.phone = "Enter a valid Ghanaian mobile number.";
-    if (password.length < 12 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-      errors.password = "Use at least 12 characters with at least one letter and one number.";
-    }
-    if (password !== confirmPassword) errors.confirmPassword = "Passwords do not match.";
-    if (!acceptedPolicies) errors.acceptedPolicies = "You must accept the Terms and Privacy Policy.";
+    const errors = validateRegistration({
+      fullName,
+      email,
+      phone,
+      password,
+      confirmPassword,
+      acceptedPolicies,
+    });
     setFieldErrors(errors);
     setError("");
     if (Object.keys(errors).length) return;
 
     setSubmitting(true);
     try {
-      await register({ full_name: fullName.trim(), phone, password });
-      navigate("/dashboard", { replace: true, state: { welcome: true } });
+      const response = await register({
+        full_name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone,
+        password,
+      });
+      navigate("/verify-email", {
+        replace: true,
+        state: { email: response.email },
+      });
     } catch (requestError) {
       if (requestError instanceof ApiError) setFieldErrors(requestError.fieldErrors);
       setError(
@@ -49,9 +59,9 @@ export function SignupPage() {
   return (
     <main className="account-page" id="main-content" tabIndex={-1}>
       <section className="account-card" aria-labelledby="signup-title">
-        <span className="eyebrow">JOIN FALAAA</span>
+        <span className="eyebrow">JOIN OBIA</span>
         <h1 id="signup-title">Create your account</h1>
-        <p>Use your Ghanaian mobile number to manage purchase requests and order history.</p>
+        <p>Use your email address to verify your account and manage purchase requests.</p>
         <form className="account-form" onSubmit={handleSubmit} noValidate>
           <label htmlFor="signup-name">Full name</label>
           <input
@@ -63,6 +73,19 @@ export function SignupPage() {
             aria-invalid={Boolean(fieldErrors.full_name)}
           />
           {fieldErrors.full_name && <span className="account-field-error">{fieldErrors.full_name}</span>}
+
+          <label htmlFor="signup-email">Email address</label>
+          <input
+            autoComplete="email"
+            id="signup-email"
+            inputMode="email"
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
+            type="email"
+            value={email}
+            aria-invalid={Boolean(fieldErrors.email)}
+          />
+          {fieldErrors.email && <span className="account-field-error">{fieldErrors.email}</span>}
 
           <label htmlFor="signup-phone">Ghanaian phone number</label>
           <input
@@ -77,14 +100,19 @@ export function SignupPage() {
           {fieldErrors.phone && <span className="account-field-error">{fieldErrors.phone}</span>}
 
           <label htmlFor="signup-password">Password</label>
-          <input
-            autoComplete="new-password"
-            id="signup-password"
-            onChange={(event) => setPassword(event.target.value)}
-            type="password"
-            value={password}
-            aria-invalid={Boolean(fieldErrors.password)}
-          />
+          <div className="password-control">
+            <input
+              autoComplete="new-password"
+              id="signup-password"
+              onChange={(event) => setPassword(event.target.value)}
+              type={showPassword ? "text" : "password"}
+              value={password}
+              aria-invalid={Boolean(fieldErrors.password)}
+            />
+            <button onClick={() => setShowPassword((shown) => !shown)} type="button">
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
           <span className="account-field-hint">At least 12 characters, including a letter and a number.</span>
           {fieldErrors.password && <span className="account-field-error">{fieldErrors.password}</span>}
 
@@ -93,7 +121,7 @@ export function SignupPage() {
             autoComplete="new-password"
             id="signup-confirm"
             onChange={(event) => setConfirmPassword(event.target.value)}
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={confirmPassword}
             aria-invalid={Boolean(fieldErrors.confirmPassword)}
           />
@@ -115,7 +143,7 @@ export function SignupPage() {
           </button>
         </form>
         <div className="account-provider-note" role="status">
-          Your account will be active but phone-unverified. SMS verification is unavailable until an SMS provider is connected; no verification message has been sent.
+          After you register, Obia will send an 8-digit verification code to your email address. You must verify your email before signing in.
         </div>
         <p className="account-switch">Already have an account? <Link to="/login">Sign in</Link></p>
       </section>

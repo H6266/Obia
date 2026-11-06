@@ -4,7 +4,7 @@ import { Icon, NoticeBanner, PageIntro } from "../components/Ui";
 export function InfoPage() {
   const { pathname } = useLocation();
   const privacy = pathname === "/privacy";
-  const title = privacy ? "Privacy at Falaaa" : "Terms of use";
+  const title = privacy ? "Privacy at Obia" : "Terms of use";
 
   return (
     <main className="workspace-page" id="main-content" tabIndex={-1}>
@@ -26,7 +26,7 @@ export function InfoPage() {
             <h2>{privacy ? "Your data matters." : "Clear terms are part of a fair service."}</h2>
             <p>
               {privacy
-                ? "Falaaa never requests mobile money PINs. Account information is stored by the backend; passwords are Argon2id-hashed and sessions use HttpOnly cookies. The full privacy policy is still a draft and must be reviewed before launch."
+                ? "Obia never requests mobile money PINs. Account information is stored by the backend; passwords are Argon2id-hashed and sessions use HttpOnly cookies. The full privacy policy is still a draft and must be reviewed before launch."
                 : "This page is a placeholder. Service terms, payment conditions, delivery expectations, cancellations, and refund rules will be documented here before launch."}
             </p>
           </div>

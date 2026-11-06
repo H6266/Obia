@@ -12,3 +12,9 @@ class PhoneVerificationProvider(Protocol):
 class PasswordRecoveryProvider(Protocol):
     def send_recovery_link(self, phone: str, token: str) -> None:
         """Send a single-use password recovery link through a real provider."""
+
+
+class EmailDeliveryProvider(Protocol):
+    def send_email(self, to: str, subject: str, html: str, text: str) -> None:
+        """Send a transactional email through a configured provider."""
+

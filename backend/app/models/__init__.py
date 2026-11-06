@@ -1,5 +1,6 @@
 from app.models.base import Base
 from app.models.authorization import Permission, Role, RolePermission
+from app.models.auth_challenge import AuthChallenge
 from app.models.auth_session import AuthSession
 from app.models.admin import (
     AdminAuditLog,
@@ -19,6 +20,7 @@ from app.models.rate_limit import RateLimitBucket
 from app.models.user import User
 
 __all__ = [
+    "AuthChallenge",
     "AuthSession",
     "AdminAuditLog",
     "Base",

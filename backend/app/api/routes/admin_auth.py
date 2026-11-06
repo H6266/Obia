@@ -166,7 +166,7 @@ def accept_invitation(
         db.rollback()
         raise HTTPException(status_code=409, detail="This invitation is invalid or has expired.") from error
 
-    issuer = "Falaaa"
+    issuer = "Obia"
     return StaffEnrollmentRead(
         enrollment_token=enrollment_token,
         totp_secret=secret,

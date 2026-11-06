@@ -31,6 +31,21 @@ class StaffLoginRequest(BaseModel):
         return normalized
 
 
+class StaffLoginChallenge(BaseModel):
+    login_required: bool = True
+    challenge_token: str
+    email: str
+    phone_masked: str | None = None
+    channels: list[str]
+    message: str
+
+
+class StaffLoginVerifyRequest(BaseModel):
+    challenge_token: str = Field(min_length=16, max_length=128)
+    channel: Literal["email", "phone"] = "email"
+    code: str = Field(pattern=r"^\d{8}$")
+
+
 class StaffAccount(BaseModel):
     id: uuid.UUID
     identity_id: uuid.UUID
@@ -204,8 +219,10 @@ class AdminOrderDetail(AdminOrderRead):
 class AdminCustomerRead(BaseModel):
     id: uuid.UUID
     full_name: str
+    email: str | None = None
     phone: str
     phone_verified: bool
+    email_verified: bool = False
     account_status: str
     created_at: datetime
     order_count: int

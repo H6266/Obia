@@ -1,4 +1,5 @@
 import secrets
+from typing import Any
 
 from argon2 import PasswordHasher
 from cryptography.fernet import Fernet
@@ -7,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.models import (
     AdminAuditLog,
     Bundle,
@@ -18,6 +19,7 @@ from app.models import (
     StaffUser,
     User,
 )
+from app.services import email_service
 from app.services.admin_security import (
     encrypt_totp_secret,
     new_totp_code,
@@ -37,7 +39,7 @@ def _configure_mfa(monkeypatch) -> str:
 def _add_staff(
     factory: sessionmaker[Session],
     *,
-    email: str = "owner@falaaa.test",
+    email: str = "owner@obia.test",
     role: str = "owner",
     secret: str | None = None,
 ) -> tuple[StaffUser, str]:
@@ -83,6 +85,61 @@ def _csrf(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": response.json()["csrf_token"]}
 
 
+class _EmailCapture:
+    def __init__(self) -> None:
+        self.messages: list[dict[str, str]] = []
+
+    def send(self, *, to: str, content: Any) -> None:
+        self.messages.append({"to": to, "text": content.text})
+
+    @property
+    def last_code(self) -> str:
+        for token in self.messages[-1]["text"].split():
+            if token.isdigit() and len(token) == 8:
+                return token
+        raise AssertionError("No OTP code found in sent message.")
+
+
+def _configure_customer_email_auth(monkeypatch) -> _EmailCapture:
+    get_settings.cache_clear()
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv("EMAIL_FROM", "Obia <no-reply@obia.test>")
+    monkeypatch.setenv("PUBLIC_APP_URL", "https://obia.test")
+    monkeypatch.setenv("OTP_HASH_SECRET", "test-otp-hash-secret-please-change")
+    monkeypatch.setenv("AUTH_RATE_LIMIT", "1000")
+    capture = _EmailCapture()
+    monkeypatch.setattr(email_service, "send_email", capture.send)
+    return capture
+
+
+def _register_verified_customer(
+    client: TestClient,
+    monkeypatch,
+    *,
+    full_name: str = "Customer Name",
+    email: str = "customer@example.com",
+    phone: str = "0241234567",
+    password: str = "secure-customer-pass-2026",
+) -> dict[str, Any]:
+    capture = _configure_customer_email_auth(monkeypatch)
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": full_name,
+            "email": email,
+            "phone": phone,
+            "password": password,
+        },
+    )
+    assert register.status_code == 201, register.text
+    verify = client.post(
+        "/api/v1/auth/verify-email",
+        json={"email": email, "code": capture.last_code},
+    )
+    assert verify.status_code == 200, verify.text
+    return verify.json()
+
+
 def test_staff_login_requires_password_totp_and_prevents_code_replay(
     client: TestClient,
     db_session_factory: sessionmaker[Session],
@@ -91,12 +148,12 @@ def test_staff_login_requires_password_totp_and_prevents_code_replay(
     _configure_mfa(monkeypatch)
     _, secret = _add_staff(db_session_factory)
     assert client.get("/api/v1/admin/auth/me").status_code == 401
-    _login(client, "owner@falaaa.test", secret)
+    _login(client, "owner@obia.test", secret)
     assert client.get("/api/v1/admin/auth/me").json()["role"] == "owner"
     replay = client.post(
         "/api/v1/admin/auth/login",
         json={
-            "email": "owner@falaaa.test",
+            "email": "owner@obia.test",
             "password": "admin-test-password-2026",
             "totp_code": new_totp_code(secret),
         },
@@ -114,16 +171,16 @@ def test_invitation_is_one_time_and_requires_mfa_before_staff_activation(
     _add_staff(db_session_factory)
     with db_session_factory() as db:
         owner = db.scalar(
-            select(StaffUser).join(User).where(User.email == "owner@falaaa.test")
+            select(StaffUser).join(User).where(User.email == "owner@obia.test")
         )
         from app.services.admin_security import decrypt_totp_secret
         owner_secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
-    _login(client, "owner@falaaa.test", owner_secret)
+    _login(client, "owner@obia.test", owner_secret)
 
     invitation_response = client.post(
         "/api/v1/admin/staff/invitations",
         headers=_csrf(client),
-        json={"email": "ops@falaaa.test", "full_name": "Ops Person", "role": "operations_manager"},
+        json={"email": "ops@obia.test", "full_name": "Ops Person", "role": "operations_manager"},
     )
     assert invitation_response.status_code == 201, invitation_response.text
     invitation_token = invitation_response.json()["invitation_token"]
@@ -139,7 +196,7 @@ def test_invitation_is_one_time_and_requires_mfa_before_staff_activation(
     enrollment = accepted.json()
     with db_session_factory() as db:
         staff = db.scalar(
-            select(StaffUser).join(User).where(User.email == "ops@falaaa.test")
+            select(StaffUser).join(User).where(User.email == "ops@obia.test")
         )
         assert staff is not None
         assert staff.status == "pending_mfa"
@@ -171,11 +228,11 @@ def test_owner_can_read_real_operations_but_revenue_is_not_fabricated(
     _add_staff(db_session_factory)
     with db_session_factory() as db:
         owner = db.scalar(
-            select(StaffUser).join(User).where(User.email == "owner@falaaa.test")
+            select(StaffUser).join(User).where(User.email == "owner@obia.test")
         )
         from app.services.admin_security import decrypt_totp_secret
         secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
-    _login(client, "owner@falaaa.test", secret)
+    _login(client, "owner@obia.test", secret)
 
     order_response = client.post(
         "/api/v1/orders",
@@ -215,21 +272,13 @@ def test_role_permissions_and_customer_phone_masking_are_enforced(
 ) -> None:
     _configure_mfa(monkeypatch)
     _, secret = _add_staff(
-        db_session_factory, email="support@falaaa.test", role="customer_support"
+        db_session_factory, email="support@obia.test", role="customer_support"
     )
     with db_session_factory() as db:
         assert "customers.read_sensitive" not in permissions_for("customer_support", db)
         assert "staff.manage" not in permissions_for("auditor", db)
 
-    account_response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "full_name": "Customer Name",
-            "phone": "0241234567",
-            "password": "secure-customer-pass-2026",
-        },
-    )
-    assert account_response.status_code == 201
+    account = _register_verified_customer(client, monkeypatch)
     order = client.post(
         "/api/v1/orders",
         headers={
@@ -240,7 +289,7 @@ def test_role_permissions_and_customer_phone_masking_are_enforced(
     )
     assert order.status_code == 201
 
-    _login(client, "support@falaaa.test", secret)
+    _login(client, "support@obia.test", secret)
     assert client.get("/api/v1/admin/staff").status_code == 403
     assert client.get("/api/v1/admin/customers?phone=241234567").status_code == 403
     visible_orders = client.get("/api/v1/admin/orders").json()["items"]
@@ -260,22 +309,19 @@ def test_customer_suspension_is_reasoned_audited_and_revokes_sessions(
     _add_staff(db_session_factory)
     with db_session_factory() as db:
         owner = db.scalar(
-            select(StaffUser).join(User).where(User.email == "owner@falaaa.test")
+            select(StaffUser).join(User).where(User.email == "owner@obia.test")
         )
         from app.services.admin_security import decrypt_totp_secret
         secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
-    _login(client, "owner@falaaa.test", secret)
+    _login(client, "owner@obia.test", secret)
 
-    customer_response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "full_name": "Suspended Customer",
-            "phone": "0241234567",
-            "password": "secure-customer-pass-2026",
-        },
+    account = _register_verified_customer(
+        client,
+        monkeypatch,
+        full_name="Suspended Customer",
+        email="suspended@example.com",
     )
-    assert customer_response.status_code == 201
-    customer_id = customer_response.json()["id"]
+    customer_id = account["id"]
     csrf = client.get("/api/v1/admin/auth/csrf").json()["csrf_token"]
     response = client.post(
         f"/api/v1/admin/customers/{customer_id}/status",
@@ -292,7 +338,9 @@ def test_customer_suspension_is_reasoned_audited_and_revokes_sessions(
                 AdminAuditLog.resource_id == customer_id,
             )
         ) is not None
-        assert db.scalar(select(Customer).where(Customer.id == UUID(customer_id))).account_status == "suspended"
+        customer = db.scalar(select(Customer).where(Customer.id == UUID(customer_id)))
+        assert customer is not None
+        assert customer.account_status == "suspended"
 
 
 def test_catalogue_updates_are_permissioned_audited_and_preserve_order_price(
@@ -304,12 +352,12 @@ def test_catalogue_updates_are_permissioned_audited_and_preserve_order_price(
     _add_staff(db_session_factory)
     with db_session_factory() as db:
         owner = db.scalar(
-            select(StaffUser).join(User).where(User.email == "owner@falaaa.test")
+            select(StaffUser).join(User).where(User.email == "owner@obia.test")
         )
         from app.services.admin_security import decrypt_totp_secret
 
         secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
-    _login(client, "owner@falaaa.test", secret)
+    _login(client, "owner@obia.test", secret)
     created = client.post(
         "/api/v1/orders",
         headers={"Idempotency-Key": secrets.token_urlsafe(24)},
@@ -346,9 +394,9 @@ def test_catalogue_updates_are_permissioned_audited_and_preserve_order_price(
 def test_permissions_are_read_from_database(client, db_session_factory, monkeypatch) -> None:
     _configure_mfa(monkeypatch)
     _, secret = _add_staff(
-        db_session_factory, email="ops@falaaa.test", role="operations_manager"
+        db_session_factory, email="ops@obia.test", role="operations_manager"
     )
-    _login(client, "ops@falaaa.test", secret)
+    _login(client, "ops@obia.test", secret)
     with db_session_factory() as db:
         db.query(RolePermission).filter_by(
             role_name="operations_manager", permission_code="orders.read"

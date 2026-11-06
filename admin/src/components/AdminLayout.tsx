@@ -29,7 +29,7 @@ export function AdminLayout() {
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
-        <Link className="admin-brand" to="/">falaaa<span>.</span><small>OPERATIONS</small></Link>
+        <Link className="admin-brand" to="/">obia<span>.</span><small>OPERATIONS</small></Link>
         <nav aria-label="Operations navigation">
           {links.filter((link) => staff?.permissions.includes(link.permission)).map((link) => (
             <NavLink key={link.to} end={link.to === "/"} to={link.to}>{link.label}</NavLink>

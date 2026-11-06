@@ -48,7 +48,7 @@ def main() -> int:
             return 2
 
         secret = new_totp_secret()
-        issuer = "Falaaa"
+        issuer = "Obia"
         provisioning_uri = (
             f"otpauth://totp/{quote(issuer + ':' + email)}?secret={secret}"
             f"&issuer={quote(issuer)}&algorithm=SHA1&digits=6&period=30"

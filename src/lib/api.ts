@@ -29,8 +29,10 @@ export type CustomerAccount = {
   id: string;
   identity_id: string;
   full_name: string;
+  email: string;
   phone: string;
   phone_verified: boolean;
+  email_verified: boolean;
   account_status: string;
   role: string;
   created_at: string;
@@ -43,13 +45,33 @@ export type ApiHealth = {
 
 export type RegisterRequest = {
   full_name: string;
+  email: string;
   phone: string;
   password: string;
 };
 
+export type RegisterResponse = {
+  email: string;
+  verification_required: boolean;
+  message: string;
+};
+
+export type GenericAuthResponse = {
+  message: string;
+};
+
 export type LoginRequest = {
-  phone: string;
+  email: string;
   password: string;
+};
+
+export type LoginChallenge = {
+  login_required: true;
+  challenge_token: string;
+  email: string | null;
+  phone_masked: string | null;
+  channels: string[];
+  message: string;
 };
 
 export type CreateOrderRequest = {
@@ -171,19 +193,28 @@ export function getCustomer(): Promise<CustomerAccount> {
 
 export async function registerCustomer(
   payload: RegisterRequest,
-): Promise<CustomerAccount> {
-  const customer = await request<CustomerAccount>("/auth/register", {
+): Promise<RegisterResponse> {
+  return request<RegisterResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  await refreshCsrfToken();
-  return customer;
 }
 
-export async function loginCustomer(
+export function loginCustomer(
   payload: LoginRequest,
-): Promise<CustomerAccount> {
-  const customer = await request<CustomerAccount>("/auth/login", {
+): Promise<LoginChallenge> {
+  return request<LoginChallenge>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyCustomerLogin(payload: {
+  challenge_token: string;
+  channel: "email" | "phone";
+  code: string;
+}): Promise<CustomerAccount> {
+  const customer = await request<CustomerAccount>("/auth/login/verify", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -205,6 +236,45 @@ export function getCustomerOrders(): Promise<PurchaseOrder[]> {
   return request("/customers/me/orders");
 }
 
+export function verifyEmail(payload: {
+  email: string;
+  code: string;
+}): Promise<CustomerAccount> {
+  return request<CustomerAccount>("/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }).then(async (customer) => {
+    await refreshCsrfToken();
+    return customer;
+  });
+}
+
+export function resendEmailVerification(email: string): Promise<GenericAuthResponse> {
+  return request("/auth/resend-email-verification", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function requestPasswordRecovery(email: string): Promise<GenericAuthResponse> {
+  return request("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(payload: {
+  email: string;
+  code: string;
+  new_password: string;
+}): Promise<GenericAuthResponse> {
+  return request("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Legacy phone verification (SMS provider unavailable)
 export function resendPhoneVerification(): Promise<void> {
   return request("/auth/resend-verification", { method: "POST" });
 }
@@ -213,12 +283,5 @@ export function verifyPhone(code: string): Promise<void> {
   return request("/auth/verify-phone", {
     method: "POST",
     body: JSON.stringify({ code }),
-  });
-}
-
-export function requestPasswordRecovery(phone: string): Promise<void> {
-  return request("/auth/forgot-password", {
-    method: "POST",
-    body: JSON.stringify({ phone }),
   });
 }

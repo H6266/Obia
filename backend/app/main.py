@@ -10,7 +10,7 @@ from app.core.config import get_settings
 settings = get_settings()
 
 app = FastAPI(
-    title="Falaaa API",
+    title="Obia API",
     version="0.1.0",
     docs_url="/api/docs",
     redoc_url=None,
@@ -18,6 +18,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
+    allow_origin_regex=settings.development_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],

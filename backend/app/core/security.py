@@ -54,7 +54,7 @@ def optional_customer(
 
 def require_allowed_origin(request: Request) -> None:
     origin = request.headers.get("Origin")
-    if origin and origin not in get_settings().allowed_origins:
+    if origin and not get_settings().is_allowed_origin(origin):
         raise HTTPException(status_code=403, detail="Request origin is not allowed.")
 
 
@@ -142,13 +142,16 @@ def enforce_auth_rate_limit(
     *,
     limit: int | None = None,
     window_seconds: int | None = None,
+    bucket_prefix: str | None = None,
+    commit: bool = True,
 ) -> None:
     settings = get_settings()
     window_seconds = window_seconds or settings.auth_rate_window_seconds
     now = datetime.now(timezone.utc)
     window_id = int(now.timestamp()) // window_seconds
     client_ip = request.client.host if request.client else "unknown"
-    bucket_key = token_hash(f"{request.url.path}:{client_ip}:{window_id}")
+    prefix = bucket_prefix or request.url.path
+    bucket_key = token_hash(f"{prefix}:{client_ip}:{window_id}")
     statement_values = {"bucket_key": bucket_key, "attempts": 1}
     if db.bind is not None and db.bind.dialect.name == "sqlite":
         statement = sqlite_insert(RateLimitBucket).values(**statement_values)
@@ -164,7 +167,10 @@ def enforce_auth_rate_limit(
             RateLimitBucket.created_at < now - timedelta(seconds=window_seconds * 2)
         )
     )
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     if attempts is not None and attempts > (limit or settings.auth_rate_limit):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

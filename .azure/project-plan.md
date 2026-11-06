@@ -1,4 +1,4 @@
-# Falaaa project status
+# Obia project status
 
 **Status:** Customer journey and Stage 1 owner/admin operations implemented; not production-ready
 **Updated:** 2026-11-06

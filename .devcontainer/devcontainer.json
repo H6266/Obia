@@ -2,15 +2,15 @@
   "forwardPorts": [5173, 5174, 8000],
   "portsAttributes": {
     "5173": {
-      "label": "Falaaa frontend",
+      "label": "Obia frontend",
       "onAutoForward": "openBrowser"
     },
     "5174": {
-      "label": "Falaaa operations",
+      "label": "Obia operations",
       "onAutoForward": "notify"
     },
     "8000": {
-      "label": "Falaaa API",
+      "label": "Obia API",
       "onAutoForward": "notify"
     }
   }

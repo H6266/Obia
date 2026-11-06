@@ -1,4 +1,5 @@
 from functools import lru_cache
+import re
 
 from cryptography.fernet import Fernet
 from pydantic import model_validator
@@ -7,24 +8,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = (
-        "postgresql+psycopg://falaaa:falaaa-local-only@localhost:5432/falaaa"
+        "postgresql+psycopg://obia:obia-local-only@localhost:5432/obia"
     )
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:5174,http://127.0.0.1:5174"
     )
-    session_cookie_name: str = "falaaa_session"
-    csrf_cookie_name: str = "falaaa_csrf"
+    session_cookie_name: str = "obia_session"
+    csrf_cookie_name: str = "obia_csrf"
     session_cookie_secure: bool = False
     session_cookie_samesite: str = "lax"
     session_ttl_hours: int = 168
     auth_rate_limit: int = 10
     auth_rate_window_seconds: int = 60
-    staff_session_cookie_name: str = "falaaa_staff_session"
-    staff_csrf_cookie_name: str = "falaaa_staff_csrf"
+    staff_session_cookie_name: str = "obia_staff_session"
+    staff_csrf_cookie_name: str = "obia_staff_csrf"
     staff_session_ttl_hours: int = 8
     staff_auth_rate_limit: int = 5
     staff_mfa_encryption_key: str = ""
+    resend_api_key: str = ""
+    email_from: str = ""
+    public_app_url: str = "http://localhost:5173"
+    otp_hash_secret: str = ""
     environment: str = "development"
 
     model_config = SettingsConfigDict(
@@ -36,6 +41,18 @@ class Settings(BaseSettings):
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def development_origin_regex(self) -> str | None:
+        if self.environment.lower() == "development":
+            return r"^https://[a-z0-9-]+-517[34]\.app\.github\.dev$"
+        return None
+
+    def is_allowed_origin(self, origin: str) -> bool:
+        if origin in self.allowed_origins:
+            return True
+        pattern = self.development_origin_regex
+        return pattern is not None and re.fullmatch(pattern, origin) is not None
 
     @property
     def cookie_samesite(self) -> str:

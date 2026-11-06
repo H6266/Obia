@@ -14,17 +14,30 @@ import {
   logoutCustomer,
   refreshCsrfToken,
   registerCustomer,
+  verifyCustomerLogin,
+  verifyEmail,
   type CustomerAccount,
+  type LoginChallenge,
   type LoginRequest,
   type RegisterRequest,
+  type RegisterResponse,
 } from "../lib/api";
 
 type AuthContextValue = {
   customer: CustomerAccount | null;
   loading: boolean;
   error: string;
-  login: (payload: LoginRequest) => Promise<CustomerAccount>;
-  register: (payload: RegisterRequest) => Promise<CustomerAccount>;
+  login: (payload: LoginRequest) => Promise<LoginChallenge>;
+  completeLogin: (payload: {
+    challenge_token: string;
+    channel: "email" | "phone";
+    code: string;
+  }) => Promise<CustomerAccount>;
+  register: (payload: RegisterRequest) => Promise<RegisterResponse>;
+  completeEmailVerification: (payload: {
+    email: string;
+    code: string;
+  }) => Promise<CustomerAccount>;
   logout: () => Promise<void>;
   refresh: () => Promise<CustomerAccount | null>;
 };
@@ -88,19 +101,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (payload: LoginRequest) => {
-    const current = await loginCustomer(payload);
+  const login = useCallback((payload: LoginRequest) => loginCustomer(payload), []);
+
+  const completeLogin = useCallback(async (payload: {
+    challenge_token: string;
+    channel: "email" | "phone";
+    code: string;
+  }) => {
+    const current = await verifyCustomerLogin(payload);
     setCustomer(current);
     setError("");
     return current;
   }, []);
 
   const register = useCallback(async (payload: RegisterRequest) => {
-    const current = await registerCustomer(payload);
-    setCustomer(current);
+    const response = await registerCustomer(payload);
+    setCustomer(null);
     setError("");
-    return current;
+    return response;
   }, []);
+
+  const completeEmailVerification = useCallback(
+    async (payload: { email: string; code: string }) => {
+      const current = await verifyEmail(payload);
+      setCustomer(current);
+      setError("");
+      return current;
+    },
+    [],
+  );
 
   const logout = useCallback(async () => {
     await logoutCustomer();
@@ -109,8 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ customer, loading, error, login, register, logout, refresh }),
-    [customer, loading, error, login, register, logout, refresh],
+    () => ({
+      customer,
+      loading,
+      error,
+      login,
+      completeLogin,
+      register,
+      completeEmailVerification,
+      logout,
+      refresh,
+    }),
+    [customer, loading, error, login, completeLogin, register, completeEmailVerification, logout, refresh],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

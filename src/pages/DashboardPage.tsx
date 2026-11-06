@@ -2,11 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DataState, Icon, NoticeBanner, PageIntro } from "../components/Ui";
-import {
-  getCustomerOrders,
-  resendPhoneVerification,
-  type PurchaseOrder,
-} from "../lib/api";
+import { getCustomerOrders, type PurchaseOrder } from "../lib/api";
 
 export function DashboardPage() {
   const { customer, logout } = useAuth();
@@ -15,9 +11,6 @@ export function DashboardPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState("");
-  const [verificationMessage, setVerificationMessage] = useState("");
-  const [verificationError, setVerificationError] = useState("");
-  const [verificationLoading, setVerificationLoading] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
@@ -41,22 +34,6 @@ export function DashboardPage() {
     };
   }, []);
 
-  async function handleResendVerification() {
-    setVerificationLoading(true);
-    setVerificationMessage("");
-    setVerificationError("");
-    try {
-      await resendPhoneVerification();
-      setVerificationMessage("A verification message was requested.");
-    } catch (error) {
-      setVerificationError(
-        error instanceof Error ? error.message : "Phone verification is unavailable.",
-      );
-    } finally {
-      setVerificationLoading(false);
-    }
-  }
-
   async function handleLogout() {
     setLogoutError("");
     try {
@@ -71,7 +48,7 @@ export function DashboardPage() {
     <main className="workspace-page" id="main-content" tabIndex={-1}>
       <div className="workspace-container">
         <PageIntro
-          eyebrow="MY FALAAA ACCOUNT"
+          eyebrow="MY OBIA ACCOUNT"
           title={`Hello, ${customer?.full_name ?? "customer"}.`}
           description="Manage your account details and review purchase requests linked to your account."
           actions={
@@ -84,7 +61,7 @@ export function DashboardPage() {
 
         {location.state?.welcome && (
           <NoticeBanner title="Your account is ready">
-            Your account is active, but your phone number is not verified. No SMS has been sent because a verification provider is not configured.
+            Your email address has been verified and your account is active.
           </NoticeBanner>
         )}
 
@@ -94,31 +71,17 @@ export function DashboardPage() {
               <span className="eyebrow">ACCOUNT DETAILS</span>
               <h2 id="account-details-title">Your profile</h2>
             </div>
-            <span className={`account-verification${customer?.phone_verified ? " is-verified" : ""}`}>
-              {customer?.phone_verified ? "Phone verified" : "Phone unverified"}
+            <span className={`account-verification${customer?.email_verified ? " is-verified" : ""}`}>
+              {customer?.email_verified ? "Email verified" : "Email unverified"}
             </span>
           </div>
           <dl>
             <div><dt>Full name</dt><dd>{customer?.full_name}</dd></div>
+            <div><dt>Email address</dt><dd>{customer?.email}</dd></div>
             <div><dt>Phone number</dt><dd>{customer?.phone}</dd></div>
             <div><dt>Account status</dt><dd>{customer?.account_status}</dd></div>
             <div><dt>Member since</dt><dd>{customer ? new Date(customer.created_at).toLocaleDateString() : "—"}</dd></div>
           </dl>
-          {!customer?.phone_verified && (
-            <div className="account-verification-action">
-              <button
-                className="button button--outline"
-                disabled={verificationLoading}
-                onClick={handleResendVerification}
-                type="button"
-              >
-                {verificationLoading ? "Checking…" : "Request phone verification"}
-              </button>
-              <span>SMS verification is unavailable until a provider is connected.</span>
-            </div>
-          )}
-          {verificationError && <p className="account-error" role="alert">{verificationError}</p>}
-          {verificationMessage && <p className="account-success" role="status">{verificationMessage}</p>}
           {logoutError && <p className="account-error" role="alert">{logoutError}</p>}
         </section>
 

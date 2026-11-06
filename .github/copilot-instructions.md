@@ -1,4 +1,4 @@
-# Falaaa contributor instructions
+# Obia contributor instructions
 
 - Keep the customer app in React + TypeScript + Vite. Preserve existing routes, components, accessibility, and responsive styling.
 - Keep backend code in `backend/app/`; separate FastAPI routes, Pydantic schemas, SQLAlchemy models, configuration, and service logic. Do not accumulate backend behavior in `main.py`.

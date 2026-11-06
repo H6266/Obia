@@ -10,6 +10,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +27,13 @@ class User(Base):
             "account_status IN ('active', 'suspended', 'disabled')",
             name="valid_account_status",
         ),
+        Index(
+            "uq_users_email_lower",
+            text("lower(email)"),
+            unique=True,
+            postgresql_where=text("email IS NOT NULL"),
+            sqlite_where=text("email IS NOT NULL"),
+        ),
         Index("ix_users_email", "email"),
         Index("ix_users_phone", "phone"),
         Index("ix_users_account_status", "account_status"),
@@ -37,6 +45,8 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     phone_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     account_status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -36,12 +36,20 @@ class Customer(Base):
         self.guest_phone = value
 
     @property
+    def email(self) -> str:
+        return self.user.email if self.user and self.user.email else ""
+
+    @property
     def full_name(self) -> str:
         return self.user.full_name if self.user else ""
 
     @property
     def phone_verified(self) -> bool:
         return self.user.phone_verified if self.user else False
+
+    @property
+    def email_verified(self) -> bool:
+        return self.user.email_verified if self.user else False
 
     @property
     def account_status(self) -> str:

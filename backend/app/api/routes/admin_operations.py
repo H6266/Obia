@@ -588,8 +588,10 @@ def list_customers(
             AdminCustomerRead(
                 id=customer.id,
                 full_name=customer.full_name,
+                email=customer.email if sensitive else None,
                 phone=customer.phone if sensitive else _mask_phone(customer.phone),
                 phone_verified=customer.phone_verified,
+                email_verified=customer.email_verified,
                 account_status=customer.account_status,
                 created_at=customer.created_at,
                 order_count=order_count,
@@ -651,8 +653,10 @@ def customer_detail(
     return AdminCustomerDetail(
         id=customer.id,
         full_name=customer.full_name,
+        email=customer.email if "customers.read_sensitive" in permissions_for(staff.role, db) else None,
         phone=phone,
         phone_verified=customer.phone_verified,
+        email_verified=customer.email_verified,
         account_status=customer.account_status,
         created_at=customer.created_at,
         order_count=len(orders),
@@ -709,9 +713,15 @@ def set_customer_status(
     ) or 0
     phone = customer.phone if "customers.read_sensitive" in permissions_for(staff.role, db) else _mask_phone(customer.phone)
     return AdminCustomerRead(
-        id=customer.id, full_name=customer.full_name, phone=phone,
-        phone_verified=customer.phone_verified, account_status=customer.account_status,
-        created_at=customer.created_at, order_count=order_count,
+        id=customer.id,
+        full_name=customer.full_name,
+        email=customer.email if "customers.read_sensitive" in permissions_for(staff.role, db) else None,
+        phone=phone,
+        phone_verified=customer.phone_verified,
+        email_verified=customer.email_verified,
+        account_status=customer.account_status,
+        created_at=customer.created_at,
+        order_count=order_count,
     )
 
 

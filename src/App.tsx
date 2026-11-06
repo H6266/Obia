@@ -19,6 +19,7 @@ import { InfoPage } from "./pages/InfoPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { SignupPage } from "./pages/SignupPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { Icon } from "./components/Ui";
 
 const navigation = [
@@ -30,9 +31,9 @@ const navigation = [
 
 function Brand({ footer = false }: { footer?: boolean }) {
   return (
-    <Link aria-label="Falaaa home" className={`brand${footer ? " brand--footer" : ""}`} to="/">
-      <span className="brand-symbol">f</span>
-      <span>falaaa<span className="brand-period">.</span></span>
+    <Link aria-label="Obia home" className={`brand${footer ? " brand--footer" : ""}`} to="/">
+      <span className="brand-symbol">o</span>
+      <span>bia<span className="brand-period">.</span></span>
     </Link>
   );
 }
@@ -140,8 +141,8 @@ function SiteFooter() {
         </div>
       </div>
       <div className="site-footer__bottom">
-        <span>© {new Date().getFullYear()} Falaaa. Ghana.</span>
-        <span>Mobile money PINs are never requested or stored by Falaaa.</span>
+        <span>© {new Date().getFullYear()} Obia. Ghana.</span>
+        <span>Mobile money PINs are never requested or stored by Obia.</span>
         <span className="footer-status"><span /> Product preview</span>
       </div>
     </footer>
@@ -160,18 +161,19 @@ function ScrollToTop() {
       window.scrollTo({ top: 0, behavior: "instant" });
     }
     const titles: Record<string, string> = {
-      "/": "Falaaa — Data that keeps Ghana moving",
-      "/orders": "Your orders — Falaaa",
-      "/dashboard": "My Falaaa account",
-      "/signup": "Create an account — Falaaa",
-      "/login": "Sign in — Falaaa",
-      "/forgot-password": "Recover account — Falaaa",
-      "/agent": "Agent workbench — Falaaa",
-      "/business": "Business workspace — Falaaa",
-      "/privacy": "Privacy — Falaaa",
-      "/terms": "Terms of use — Falaaa",
+      "/": "Obia — Data that keeps Ghana moving",
+      "/orders": "Your orders — Obia",
+      "/dashboard": "My Obia account",
+      "/signup": "Create an account — Obia",
+      "/login": "Sign in — Obia",
+      "/verify-email": "Verify email — Obia",
+      "/forgot-password": "Recover account — Obia",
+      "/agent": "Agent workbench — Obia",
+      "/business": "Business workspace — Obia",
+      "/privacy": "Privacy — Obia",
+      "/terms": "Terms of use — Obia",
     };
-    document.title = titles[pathname] ?? "Falaaa";
+    document.title = titles[pathname] ?? "Obia";
   }, [pathname, hash]);
 
   return null;
@@ -188,6 +190,7 @@ function AppRoutes() {
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/signup" element={<GuestOnly><SignupPage /></GuestOnly>} />
         <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/forgot-password" element={<GuestOnly><ForgotPasswordPage /></GuestOnly>} />
         <Route path="/dashboard" element={<RequireCustomer><DashboardPage /></RequireCustomer>} />
         <Route path="/agent" element={<AgentPage />} />
@@ -229,7 +232,7 @@ function NotFound() {
           <span className="eyebrow">404 · PAGE NOT FOUND</span>
           <h1>Looks like you took a wrong turn.</h1>
           <p>The page you’re looking for isn’t here, but your next connection could be.</p>
-          <Link className="button button--primary" to="/">Back to Falaaa home <Icon name="arrow-right" size={16} /></Link>
+          <Link className="button button--primary" to="/">Back to Obia home <Icon name="arrow-right" size={16} /></Link>
         </div>
       </div>
     </main>

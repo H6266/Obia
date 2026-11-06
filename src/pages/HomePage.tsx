@@ -70,7 +70,7 @@ export function HomePage() {
           </div>
         </div>
 
-        <div className="hero-art" aria-label="Falaaa data marketplace preview">
+        <div className="hero-art" aria-label="Obia data marketplace preview">
           <div className="hero-art__orbit hero-art__orbit--outer" />
           <div className="hero-art__orbit hero-art__orbit--inner" />
           <div className="hero-art__signal">
@@ -82,7 +82,7 @@ export function HomePage() {
             <div className="hero-phone__notch" />
             <div className="hero-phone__topline">
               <span className="brand-symbol brand-symbol--small">f</span>
-              <span>falaaa</span>
+              <span>obia</span>
               <span className="hero-phone__dots">•••</span>
             </div>
             <div className="hero-phone__greeting">Good morning</div>
@@ -144,7 +144,7 @@ export function HomePage() {
           </ul>
           <div className="purchase-copy__trust">
             <Icon name="lock" size={16} />
-            Your mobile money PIN is never entered on Falaaa.
+            Your mobile money PIN is never entered on Obia.
           </div>
         </div>
         <OrderComposer />

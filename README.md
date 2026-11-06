@@ -1,6 +1,6 @@
-# Falaaa
+# Obia
 
-Falaaa is a responsive Ghanaian mobile-data marketplace prototype for MTN, Telecel, and AirtelTigo (AT). The repository contains a customer React app, a separate staff operations React app, and one independently runnable FastAPI/PostgreSQL backend.
+Obia is a responsive Ghanaian mobile-data marketplace prototype for MTN, Telecel, and AirtelTigo (AT). The repository contains a customer React app, a separate staff operations React app, and one independently runnable FastAPI/PostgreSQL backend.
 
 ## Architecture
 
@@ -54,6 +54,8 @@ python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Back up this key securely; losing it prevents decrypting enrolled staff TOTP secrets. For production, configure `SESSION_COOKIE_SECURE=true`; use `SESSION_COOKIE_SAMESITE=none` only when the frontend and API are cross-site and both are HTTPS. The backend rejects production settings without secure session cookies.
 
+Customer registration and sign-in use email one-time codes. Before using those flows, set `RESEND_API_KEY`, `EMAIL_FROM` (a sender verified with Resend), and a private random `OTP_HASH_SECRET` in the root `.env`; Compose passes these values to the API. For example, generate the OTP hash secret with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. Without a working email provider and hash secret, the API refuses to issue codes rather than simulating authentication.
+
 ### Frontend
 
 ```bash
@@ -62,6 +64,8 @@ npm run dev
 ```
 
 The Vite development server proxies `/api/*` to `API_PROXY_TARGET` (default `http://localhost:8000`). Set `VITE_API_BASE_URL` to `/api/v1` for the local proxy or to the deployed API base URL, including `/api/v1`, for a separately hosted frontend. Configure that API's `CORS_ORIGINS` for the actual frontend origin; do not hardcode a Codespaces forwarding URL.
+
+In development, the API also permits credentialed requests from the exact GitHub Codespaces forwarded frontend origins for ports `5173` and `5174`. This development-only allowlist is disabled in production, where `CORS_ORIGINS` must contain the exact deployed frontend origins.
 
 ### Staff operations application
 
@@ -89,7 +93,7 @@ Roles enforced by FastAPI include Owner, Super Admin, Operations Manager, Financ
 
 The initial operations console includes a real-data overview, searchable/filterable/paginated order centre, customer lookup and account controls, staff invitations, audited catalogue management, support notes/escalations, and audit history. Staff permissions are read from relational role/permission tables and enforced by the API. Sample-catalogue orders are separated from business metrics. Requested order value is not described as revenue; verified revenue, margin, supplier, and inventory figures are unavailable until their evidence-backed ledgers and provider integrations exist.
 
-Proposed production hosts `falaaa.com`, `admin.falaaa.com`, and `agents.falaaa.com` are deployment ideas only; no such domains or production setup are assumed. For a separately hosted admin/API pair, configure exact CORS origins, HTTPS, secure cookies, and `VITE_API_BASE_URL` for the admin API prefix `/api/v1/admin`.
+Proposed production hosts `obia.com`, `admin.obia.com`, and `agents.obia.com` are deployment ideas only; no such domains or production setup are assumed. For a separately hosted admin/API pair, configure exact CORS origins, HTTPS, secure cookies, and `VITE_API_BASE_URL` for the admin API prefix `/api/v1/admin`.
 
 ### Run the API without the API container
 
@@ -117,8 +121,9 @@ The interactive API documentation is available at `http://localhost:8000/api/doc
 | `GET` | `/api/v1/networks` | Supported networks: `mtn`, `telecel`, `at` |
 | `GET` | `/api/v1/networks/{network_id}/bundles` | Available bundle records for one network |
 | `GET` | `/api/v1/bundles/{bundle_id}` | Retrieve a bundle |
-| `POST` | `/api/v1/auth/register` | Register a customer, hash password, and start an unverified session |
-| `POST` | `/api/v1/auth/login` | Authenticate and set an HttpOnly session cookie |
+| `POST` | `/api/v1/auth/register` | Register a customer and send an email-verification code |
+| `POST` | `/api/v1/auth/login` | Verify credentials and send a sign-in code |
+| `POST` | `/api/v1/auth/login/verify` | Verify the sign-in code and set an HttpOnly session cookie |
 | `POST` | `/api/v1/auth/logout` | Revoke the current session (CSRF protected) |
 | `GET` | `/api/v1/auth/me` | Return the authenticated customer's account |
 | `GET` | `/api/v1/auth/csrf` | Issue/refresh a CSRF token for authenticated browser requests |
@@ -152,9 +157,9 @@ The initial Alembic migration seeds one clearly marked **sample-only** bundle pe
 
 ## Customer accounts
 
-Visit `/signup` to create an account with a full name, Ghanaian phone number, and a password of at least 12 characters containing a letter and a number. The backend normalizes phone numbers to E.164 and stores only an Argon2id hash. Registration starts an active **phone-unverified** account; it does not claim to send an OTP.
+Visit `/signup` to create an account with a full name, email address, Ghanaian phone number, and a password of at least 12 characters containing a letter and a number. The backend normalizes email and phone values and stores only an Argon2id password hash. Email must be verified before sign-in; phone remains unverified until an SMS provider is configured.
 
-Sign in at `/login`. Authentication uses an opaque random session token; only its SHA-256 digest is stored in PostgreSQL. The browser receives a `HttpOnly` session cookie (7-day default); it is not placed in localStorage. A separate CSRF token is required for authenticated state-changing requests. Same-origin development uses the Vite API proxy. For separate production origins, allow only the frontend origin in `CORS_ORIGINS`, enable credentials, deploy over HTTPS, and set secure cookie options.
+Sign in at `/login` with the verified email and password, then enter the one-time code sent by email. Authentication uses an opaque random session token; only its SHA-256 digest is stored in PostgreSQL. The browser receives a `HttpOnly` session cookie (7-day default); it is not placed in localStorage. A separate CSRF token is required for authenticated state-changing requests. Same-origin development uses the Vite API proxy. For separate production origins, allow only the frontend origin in `CORS_ORIGINS`, enable credentials, deploy over HTTPS, and set secure cookie options.
 
 `/dashboard` is session-protected in the UI and on every private API endpoint. Customer order history is filtered by its authenticated account owner; pre-account/anonymous orders are not automatically attached to an account merely because the same phone number was entered during signup. An authenticated purchase request is owned by that session; recipient numbers can differ and are stored separately.
 
