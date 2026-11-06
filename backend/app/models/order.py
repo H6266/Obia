@@ -50,8 +50,17 @@ class Order(Base):
         default=OrderStatus.PENDING_PAYMENT,
         nullable=False,
     )
+    payment_status: Mapped[str] = mapped_column(
+        String(24), default="unverified", nullable=False
+    )
+    fulfillment_status: Mapped[str] = mapped_column(
+        String(24), default="not_started", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), index=True, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     customer: Mapped["Customer"] = relationship(

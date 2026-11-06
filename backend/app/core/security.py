@@ -136,9 +136,15 @@ def clear_session_cookies(response: Response) -> None:
         )
 
 
-def enforce_auth_rate_limit(request: Request, db: Session) -> None:
+def enforce_auth_rate_limit(
+    request: Request,
+    db: Session,
+    *,
+    limit: int | None = None,
+    window_seconds: int | None = None,
+) -> None:
     settings = get_settings()
-    window_seconds = settings.auth_rate_window_seconds
+    window_seconds = window_seconds or settings.auth_rate_window_seconds
     now = datetime.now(timezone.utc)
     window_id = int(now.timestamp()) // window_seconds
     client_ip = request.client.host if request.client else "unknown"
@@ -159,7 +165,7 @@ def enforce_auth_rate_limit(request: Request, db: Session) -> None:
         )
     )
     db.commit()
-    if attempts is not None and attempts > settings.auth_rate_limit:
+    if attempts is not None and attempts > (limit or settings.auth_rate_limit):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please try again later.",

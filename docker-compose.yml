@@ -20,7 +20,7 @@ services:
       context: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://falaaa:${POSTGRES_PASSWORD:-falaaa-local-only}@db:5432/falaaa
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-falaaa_session}
       CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-falaaa_csrf}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
@@ -28,6 +28,11 @@ services:
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-10}
       AUTH_RATE_WINDOW_SECONDS: ${AUTH_RATE_WINDOW_SECONDS:-60}
+      STAFF_SESSION_COOKIE_NAME: ${STAFF_SESSION_COOKIE_NAME:-falaaa_staff_session}
+      STAFF_CSRF_COOKIE_NAME: ${STAFF_CSRF_COOKIE_NAME:-falaaa_staff_csrf}
+      STAFF_SESSION_TTL_HOURS: ${STAFF_SESSION_TTL_HOURS:-8}
+      STAFF_AUTH_RATE_LIMIT: ${STAFF_AUTH_RATE_LIMIT:-5}
+      STAFF_MFA_ENCRYPTION_KEY: ${STAFF_MFA_ENCRYPTION_KEY:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
       - "8000:8000"

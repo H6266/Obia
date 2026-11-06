@@ -8,6 +8,10 @@
 - Validate Ghanaian phone numbers with `phonenumbers`; normalize stored values to E.164 and expose only masked numbers in order responses.
 - Keep orders `pending_payment` until a verified payment event exists. Route all state changes through `app/services/order_service.py`; never expose public status mutation or fulfillment actions.
 - Customer sessions use opaque HttpOnly cookies and CSRF validation; keep protected API routes protected server-side. Do not treat customer role as administrative authorization.
+- Keep the operations console in the separate `admin/` React/Vite app; it must use the existing API/database and must not duplicate business rules or customer authentication.
+- Staff accounts are invitation-only, use separate HttpOnly sessions, mandatory TOTP MFA, encrypted MFA secrets, and server-enforced role permissions. Create the initial Owner only with `backend/scripts/bootstrap_owner.py`; never add public staff/Owner registration.
+- Audit and order-event records are append-only in PostgreSQL. Record administrative changes and sensitive data access, and do not add mutation endpoints for payment or fulfilment state without verified provider evidence.
+- Do not infer revenue, profit, supplier balances, or inventory from order requests. Keep unavailable metrics explicitly unavailable; exclude sample catalogue records from business metrics.
 - Argon2id hashes are the only stored passwords. Never store session tokens in the browser's localStorage or log passwords, cookies, CSRF tokens, or OTPs.
 - Do not simulate SMS, password recovery, payment, supplier delivery, or admin authorization. Mark phone accounts unverified and expose provider-dependent operations as unavailable until a real provider exists.
 - Keep account ownership distinct from recipient phone numbers. Customer order history must query the authenticated account owner and must not expose legacy guest orders.
@@ -21,6 +25,7 @@
 ```bash
 npm test
 npm run build
+npm --prefix admin run build
 
 cd backend
 python -m pytest -q

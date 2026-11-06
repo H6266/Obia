@@ -1,0 +1,266 @@
+from argon2 import PasswordHasher
+from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
+from uuid import UUID
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.core.config import Settings
+from app.models import AdminAuditLog, Customer, OrderEvent, StaffUser
+from app.services.admin_security import (
+    encrypt_totp_secret,
+    new_totp_code,
+    new_totp_secret,
+    permissions_for,
+)
+
+
+def _configure_mfa(monkeypatch) -> str:
+    key = Fernet.generate_key().decode()
+    settings = Settings(staff_mfa_encryption_key=key)
+    monkeypatch.setattr("app.services.admin_security.get_settings", lambda: settings)
+    monkeypatch.setattr("app.api.routes.admin_auth.get_settings", lambda: settings)
+    return key
+
+
+def _add_staff(
+    factory: sessionmaker[Session],
+    *,
+    email: str = "owner@falaaa.test",
+    role: str = "owner",
+    secret: str | None = None,
+) -> tuple[StaffUser, str]:
+    secret = secret or new_totp_secret()
+    with factory() as db:
+        staff = StaffUser(
+            email=email,
+            full_name="Test Owner",
+            password_hash=PasswordHasher().hash("admin-test-password-2026"),
+            role=role,
+            status="active",
+            mfa_enabled=True,
+            mfa_secret_encrypted=encrypt_totp_secret(secret),
+        )
+        db.add(staff)
+        db.commit()
+        db.refresh(staff)
+        return staff, secret
+
+
+def _login(client: TestClient, email: str, secret: str) -> TestClient:
+    response = client.post(
+        "/api/v1/admin/auth/login",
+        json={
+            "email": email,
+            "password": "admin-test-password-2026",
+            "totp_code": new_totp_code(secret),
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert "HttpOnly" in response.headers["set-cookie"]
+    return client
+
+
+def _csrf(client: TestClient) -> dict[str, str]:
+    response = client.get("/api/v1/admin/auth/csrf")
+    assert response.status_code == 200
+    return {"X-CSRF-Token": response.json()["csrf_token"]}
+
+
+def test_staff_login_requires_password_totp_and_prevents_code_replay(
+    client: TestClient,
+    db_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    _configure_mfa(monkeypatch)
+    _, secret = _add_staff(db_session_factory)
+    assert client.get("/api/v1/admin/auth/me").status_code == 401
+    _login(client, "owner@falaaa.test", secret)
+    assert client.get("/api/v1/admin/auth/me").json()["role"] == "owner"
+    replay = client.post(
+        "/api/v1/admin/auth/login",
+        json={
+            "email": "owner@falaaa.test",
+            "password": "admin-test-password-2026",
+            "totp_code": new_totp_code(secret),
+        },
+    )
+    assert replay.status_code == 401
+    assert client.get("/api/v1/admin/auth/csrf").status_code == 200
+
+
+def test_invitation_is_one_time_and_requires_mfa_before_staff_activation(
+    client: TestClient,
+    db_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    _configure_mfa(monkeypatch)
+    _add_staff(db_session_factory)
+    with db_session_factory() as db:
+        owner = db.scalar(select(StaffUser).where(StaffUser.email == "owner@falaaa.test"))
+        from app.services.admin_security import decrypt_totp_secret
+        owner_secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
+    _login(client, "owner@falaaa.test", owner_secret)
+
+    invitation_response = client.post(
+        "/api/v1/admin/staff/invitations",
+        headers=_csrf(client),
+        json={"email": "ops@falaaa.test", "full_name": "Ops Person", "role": "operations_manager"},
+    )
+    assert invitation_response.status_code == 201, invitation_response.text
+    invitation_token = invitation_response.json()["invitation_token"]
+    assert len(invitation_token) >= 32
+    invitations = client.get("/api/v1/admin/staff/invitations").json()
+    assert "invitation_token" not in invitations[0]
+
+    accepted = client.post(
+        "/api/v1/admin/auth/accept-invitation",
+        json={"token": invitation_token, "password": "operations-password-2026"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    enrollment = accepted.json()
+    with db_session_factory() as db:
+        staff = db.scalar(select(StaffUser).where(StaffUser.email == "ops@falaaa.test"))
+        assert staff is not None
+        assert staff.status == "pending_mfa"
+        assert staff.mfa_enabled is False
+        assert staff.mfa_secret_encrypted != enrollment["totp_secret"]
+
+    enabled = client.post(
+        "/api/v1/admin/auth/confirm-enrollment",
+        json={
+            "enrollment_token": enrollment["enrollment_token"],
+            "totp_code": new_totp_code(enrollment["totp_secret"]),
+        },
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["mfa_enabled"] is True
+    reused = client.post(
+        "/api/v1/admin/auth/accept-invitation",
+        json={"token": invitation_token, "password": "operations-password-2026"},
+    )
+    assert reused.status_code == 400
+
+
+def test_owner_can_read_real_operations_but_revenue_is_not_fabricated(
+    client: TestClient,
+    db_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    _configure_mfa(monkeypatch)
+    _add_staff(db_session_factory)
+    with db_session_factory() as db:
+        owner = db.scalar(select(StaffUser).where(StaffUser.email == "owner@falaaa.test"))
+        from app.services.admin_security import decrypt_totp_secret
+        secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
+    _login(client, "owner@falaaa.test", secret)
+
+    order_response = client.post(
+        "/api/v1/orders",
+        json={"phone": "0241234567", "network_id": "mtn", "bundle_id": "mtn-sample-1gb"},
+    )
+    assert order_response.status_code == 201
+    reference = order_response.json()["reference"]
+    dashboard = client.get("/api/v1/admin/dashboard?period=last_30_days")
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["total_orders"] == 0
+    assert dashboard.json()["sample_orders"] == 1
+    assert dashboard.json()["requested_order_value"] == "0.00"
+    assert dashboard.json()["revenue"] is None
+    assert dashboard.json()["gross_profit"] is None
+
+    order_list = client.get("/api/v1/admin/orders?page=1&page_size=1")
+    assert order_list.status_code == 200, order_list.text
+    assert order_list.json()["items"][0]["reference"] == reference
+    order_detail = client.get(f"/api/v1/admin/orders/{reference}")
+    assert order_detail.status_code == 200, order_detail.text
+    assert order_detail.json()["timeline"][0]["event_type"] == "order.created"
+    assert order_detail.json()["payment_status"] == "unverified"
+    assert order_detail.json()["fulfillment_status"] == "not_started"
+    with db_session_factory() as db:
+        assert db.scalar(
+            select(OrderEvent).where(OrderEvent.order_reference == reference)
+        ) is not None
+        audit = db.scalars(select(AdminAuditLog)).all()
+        assert any(item.action == "order.viewed" for item in audit)
+
+
+def test_role_permissions_and_customer_phone_masking_are_enforced(
+    client: TestClient,
+    db_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    _configure_mfa(monkeypatch)
+    _, secret = _add_staff(
+        db_session_factory, email="support@falaaa.test", role="customer_support"
+    )
+    assert "customers.read_sensitive" not in permissions_for("customer_support")
+    assert "staff.manage" not in permissions_for("auditor")
+
+    account_response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "Customer Name",
+            "phone": "0241234567",
+            "password": "secure-customer-pass-2026",
+        },
+    )
+    assert account_response.status_code == 201
+    order = client.post(
+        "/api/v1/orders",
+        headers={"X-CSRF-Token": client.get("/api/v1/auth/csrf").json()["csrf_token"]},
+        json={"phone": "0241234567", "network_id": "mtn", "bundle_id": "mtn-sample-1gb"},
+    )
+    assert order.status_code == 201
+
+    _login(client, "support@falaaa.test", secret)
+    assert client.get("/api/v1/admin/staff").status_code == 403
+    assert client.get("/api/v1/admin/customers?phone=241234567").status_code == 403
+    visible_orders = client.get("/api/v1/admin/orders").json()["items"]
+    assert visible_orders
+    assert "••" in visible_orders[0]["recipient_phone"]
+    customers = client.get("/api/v1/admin/customers").json()["items"]
+    assert customers
+    assert "••" in customers[0]["phone"]
+
+
+def test_customer_suspension_is_reasoned_audited_and_revokes_sessions(
+    client: TestClient,
+    db_session_factory: sessionmaker[Session],
+    monkeypatch,
+) -> None:
+    _configure_mfa(monkeypatch)
+    _add_staff(db_session_factory)
+    with db_session_factory() as db:
+        owner = db.scalar(select(StaffUser).where(StaffUser.email == "owner@falaaa.test"))
+        from app.services.admin_security import decrypt_totp_secret
+        secret = decrypt_totp_secret(owner.mfa_secret_encrypted)
+    _login(client, "owner@falaaa.test", secret)
+
+    customer_response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "Suspended Customer",
+            "phone": "0241234567",
+            "password": "secure-customer-pass-2026",
+        },
+    )
+    assert customer_response.status_code == 201
+    customer_id = customer_response.json()["id"]
+    csrf = client.get("/api/v1/admin/auth/csrf").json()["csrf_token"]
+    response = client.post(
+        f"/api/v1/admin/customers/{customer_id}/status",
+        headers={"X-CSRF-Token": csrf},
+        json={"status": "suspended", "reason": "Account review requested by support."},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["account_status"] == "suspended"
+    assert client.get("/api/v1/auth/me").status_code == 401
+    with db_session_factory() as db:
+        assert db.scalar(
+            select(AdminAuditLog).where(
+                AdminAuditLog.action == "customer.suspended",
+                AdminAuditLog.resource_id == customer_id,
+            )
+        ) is not None
+        assert db.scalar(select(Customer).where(Customer.id == UUID(customer_id))).account_status == "suspended"

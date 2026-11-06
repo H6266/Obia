@@ -4,7 +4,7 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Bundle, Customer, Network, Order, OrderStatus
+from app.models import Bundle, Customer, Network, Order, OrderEvent, OrderStatus
 from app.schemas.customer import normalize_ghana_phone
 from app.schemas.order import OrderCreate
 
@@ -75,6 +75,17 @@ def create_order(
         status=OrderStatus.PENDING_PAYMENT,
     )
     db.add(order)
+    db.add(
+        OrderEvent(
+            order_reference=order.reference,
+            event_type="order.created",
+            previous_status=None,
+            new_status=OrderStatus.PENDING_PAYMENT.value,
+            actor_type="customer" if owner else "guest",
+            actor_label="authenticated customer" if owner else "guest checkout",
+            details={"payment_status": "unverified", "fulfillment_status": "not_started"},
+        )
+    )
     db.commit()
     db.refresh(order)
     return order
@@ -90,7 +101,18 @@ def transition_order_status(
         raise InvalidStatusTransition(
             f"Cannot transition an order from {order.status.value} to {new_status.value}."
         )
+    previous_status = order.status
     order.status = new_status
+    db.add(
+        OrderEvent(
+            order_reference=order.reference,
+            event_type="order.status_changed",
+            previous_status=previous_status.value,
+            new_status=new_status.value,
+            actor_type="system",
+            actor_label="order service",
+        )
+    )
     db.commit()
     db.refresh(order)
     return order

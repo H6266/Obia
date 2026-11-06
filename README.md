@@ -1,12 +1,13 @@
 # Falaaa
 
-Falaaa is a responsive Ghanaian mobile-data marketplace prototype for MTN, Telecel, and AirtelTigo (AT). The repository contains a React storefront and an independently runnable FastAPI purchase-request API.
+Falaaa is a responsive Ghanaian mobile-data marketplace prototype for MTN, Telecel, and AirtelTigo (AT). The repository contains a customer React app, a separate staff operations React app, and one independently runnable FastAPI/PostgreSQL backend.
 
 ## Architecture
 
 - **Frontend:** React 19, TypeScript, Vite, and React Router.
+- **Operations frontend:** Separate React 19, TypeScript, Vite app under `admin/`; it has no independent database or business rules.
 - **Backend:** Python 3.12+, FastAPI, Pydantic Settings, SQLAlchemy 2, and Alembic.
-- **Account security:** Argon2id password hashes, opaque database-backed sessions in HttpOnly cookies, CSRF-token validation, and database-backed authentication rate limits.
+- **Account security:** Customer and staff identities are separate; passwords use Argon2id, staff requires TOTP MFA, and opaque database-backed HttpOnly sessions use CSRF validation and database-backed rate limits.
 - **Database:** PostgreSQL for local/deployed use; SQLite in automated API tests.
 - **Tests:** Vitest for frontend utilities and pytest for the backend.
 - **API boundaries:** The API owns catalogue reads, customer records, order creation, order lookup, and controlled internal order-state transitions. The frontend only submits requests and displays API responses.
@@ -18,15 +19,16 @@ src/
   lib/api.ts        # shared API client and API response types
   pages/            # React Router pages
 backend/
-  app/api/routes/   # health, auth, networks, bundles, orders, customer history
+  app/api/routes/   # customer, catalogue, order, and role-protected admin APIs
   app/core/         # settings, database session, cookie/session security
-  app/models/       # SQLAlchemy catalogue, customer, order, and session models
+  app/models/       # SQLAlchemy catalogue, customer, order, staff, and audit models
   app/schemas/      # Pydantic request/response validation
-  app/services/     # order creation and state transition rules
+  app/services/     # order state rules, staff permissions, audit and session security
   alembic/          # versioned database schema and sample catalogue seed
-  tests/            # API, phone-validation, and state-transition tests
+  tests/            # customer, admin/RBAC, phone, and order service tests
 src/auth/           # shared authenticated customer state
 src/pages/          # storefront and customer account pages
+admin/src/          # separate staff login, dashboard, orders, customers, audit, staff
 ```
 
 ## Local setup
@@ -41,9 +43,16 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The API listens on port `8000`; PostgreSQL is available on port `5432`. The Codespaces configuration forwards ports `5173` and `8000`. The Compose password fallback is for local development only and must never be reused in a deployed environment.
+The API listens on port `8000`; PostgreSQL is available on port `5432`. The Codespaces configuration forwards ports `5173`, `5174`, and `8000`. The Compose password fallback is for local development only and must never be reused in a deployed environment.
 
-The root `.env.example` documents Compose, Vite, cookie, CORS, and rate-limit settings. For production, configure `SESSION_COOKIE_SECURE=true`; use `SESSION_COOKIE_SAMESITE=none` only when the frontend and API are cross-site and both are HTTPS. The backend rejects production settings without secure session cookies.
+The root `.env.example` documents Compose, Vite, cookie, CORS, and rate-limit settings. Generate and set a private staff MFA encryption key before staff onboarding:
+
+```bash
+python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+# Put the generated value in STAFF_MFA_ENCRYPTION_KEY in the untracked root .env.
+```
+
+Back up this key securely; losing it prevents decrypting enrolled staff TOTP secrets. For production, configure `SESSION_COOKIE_SECURE=true`; use `SESSION_COOKIE_SAMESITE=none` only when the frontend and API are cross-site and both are HTTPS. The backend rejects production settings without secure session cookies.
 
 ### Frontend
 
@@ -53,6 +62,34 @@ npm run dev
 ```
 
 The Vite development server proxies `/api/*` to `API_PROXY_TARGET` (default `http://localhost:8000`). Set `VITE_API_BASE_URL` to `/api/v1` for the local proxy or to the deployed API base URL, including `/api/v1`, for a separately hosted frontend. Configure that API's `CORS_ORIGINS` for the actual frontend origin; do not hardcode a Codespaces forwarding URL.
+
+### Staff operations application
+
+The staff console is a separate app and uses the same API and PostgreSQL database:
+
+```bash
+cd admin
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Open `http://localhost:5174`. The admin app proxies API requests through its own Vite server; `admin/.env` only contains public frontend configuration, never server secrets. Customer sessions cannot authenticate to staff endpoints.
+
+Create the first Owner only through the interactive backend bootstrap command after the database migration and MFA encryption key are configured:
+
+```bash
+docker compose up --build -d
+docker compose exec -it api python -m scripts.bootstrap_owner
+```
+
+The command refuses if an Owner already exists, prompts for an Argon2id password, and requires the new Owner to verify authenticator TOTP before creating the account. Staff accounts are never created by public customer registration. Owners invite staff from the console; invitation tokens are one-time, expire after 48 hours, and must be delivered through an approved private channel (the app does not send email). Invitees set a password and enroll TOTP before activation. Staff login requires password plus a fresh TOTP code; staff sessions use separate HttpOnly cookies and an 8-hour default expiry.
+
+Roles enforced by FastAPI include Owner, Super Admin, Operations Manager, Finance Manager, Customer Support, Inventory Officer, Agent Manager, and Auditor. The frontend hides inaccessible sections for usability, but each API endpoint independently checks permissions. Customer phone numbers are masked unless the role grants sensitive-data access. Customer status changes require a reason and revoke active customer sessions. Audit and order-event records are append-only in PostgreSQL.
+
+The initial operations console includes a real-data overview, searchable/filterable/paginated order centre, customer lookup and account controls, staff invitations, support notes/escalations, and audit history. Sample-catalogue orders are separated from business metrics. Requested order value is not described as revenue; verified revenue, margin, supplier, and inventory figures are unavailable until their evidence-backed ledgers and provider integrations exist.
+
+Proposed production hosts `falaaa.com`, `admin.falaaa.com`, and `agents.falaaa.com` are deployment ideas only; no such domains or production setup are assumed. For a separately hosted admin/API pair, configure exact CORS origins, HTTPS, secure cookies, and `VITE_API_BASE_URL` for the admin API prefix `/api/v1/admin`.
 
 ### Run the API without the API container
 
@@ -125,6 +162,10 @@ Registration and login are rate limited using database-backed per-IP windows (`A
 npm test
 npm run build
 
+# Independent administration frontend
+npm --prefix admin install
+npm --prefix admin run build
+
 # Backend (from repository root)
 cd backend
 python -m pip install -r requirements.txt
@@ -132,13 +173,15 @@ python -m pytest -q
 alembic upgrade head
 ```
 
-Backend tests use an in-memory SQLite database. To verify PostgreSQL connectivity and migrations locally, start the Compose services and check `GET /api/v1/health`; the API container applies migrations on startup.
+Backend tests use an in-memory SQLite database. To verify PostgreSQL connectivity and migrations locally, start the Compose services and check `GET /api/v1/health`; the API container applies migrations on startup. PostgreSQL-specific append-only triggers are created by the admin operations migration.
 
 ## Known limitations and integration requirements
 
 - Phone OTP delivery and verification are **unavailable** until an SMS provider is selected, configured, and verified. Accounts are explicitly marked phone-unverified; no OTP appears in responses or logs.
 - Password recovery/reset returns an unavailable response until a real recovery provider and single-use reset-token workflow are integrated; the UI does not claim a recovery message was sent.
-- Administrative authentication/authorization, agent accounts, and business controls are not implemented. Customer auth does not grant admin access.
+- The Stage 1 staff console does not yet include inventory, supplier, payment/finance/refund, agent, business-customer, alert, export, or configurable second-person approval workflows. Customer auth does not grant admin access.
+- Staff onboarding requires a configured `STAFF_MFA_ENCRYPTION_KEY`; staff invitation delivery is manual. TOTP secret encryption depends on securely backing up this key.
+- No payment provider, supplier API, verified payment ledger, revenue/profit basis, or stock ledger exists. The operations app correctly shows these metrics as unavailable instead of treating order requests as financial results.
 - The default development cookie is non-Secure for localhost. Production requires HTTPS and `SESSION_COOKIE_SECURE=true`; select `SameSite` based on deployment topology.
 - The Terms and Privacy pages are drafts; legal review and a production privacy/retention policy are launch requirements.
 - The order starts at `pending_payment`. No payment attempt, payment confirmation, fulfillment request, or completion is fabricated; public callers cannot set status.
