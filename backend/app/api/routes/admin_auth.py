@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import require_allowed_origin, token_hash
-from app.models import AdminAuditLog, StaffInvitation, StaffUser
+from app.models import AdminAuditLog, Role, StaffInvitation, StaffUser, User
 from app.schemas.admin import (
     AcceptStaffInvitationRequest,
     ConfirmStaffMfaRequest,
@@ -54,7 +54,11 @@ def login(
     db: Session = Depends(get_db),
 ) -> StaffAccount:
     staff_rate_limit(request, db)
-    staff = db.scalar(select(StaffUser).where(StaffUser.email == payload.email))
+    staff = db.scalar(
+        select(StaffUser)
+        .join(User, StaffUser.user_id == User.id)
+        .where(User.email == payload.email)
+    )
     password_hash = staff.password_hash if staff else dummy_password_hash
     try:
         password_matches = password_hasher.verify(password_hash, payload.password)
@@ -64,6 +68,7 @@ def login(
     if (
         staff is None
         or staff.status != "active"
+        or staff.user.account_status != "active"
         or not staff.mfa_enabled
         or not staff.mfa_secret_encrypted
         or not password_matches
@@ -87,7 +92,7 @@ def login(
         raise HTTPException(status_code=401, detail="Email, password, or authenticator code is incorrect.")
     db.commit()
     create_staff_session(db, staff, response)
-    return StaffAccount.from_staff(staff)
+    return StaffAccount.from_staff(staff, permissions_for(staff.role, db))
 
 
 @auth_router.post(
@@ -118,16 +123,20 @@ def accept_invitation(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at <= now or db.scalar(
-        select(StaffUser.id).where(StaffUser.email == invitation.email)
+        select(User.id).where(User.email == invitation.email)
     ):
         raise HTTPException(status_code=400, detail="This invitation is invalid or has expired.")
 
     secret = new_totp_secret()
     enrollment_token = secrets.token_urlsafe(32)
-    staff = StaffUser(
+    user = User(
         email=invitation.email,
         full_name=invitation.full_name,
         password_hash=password_hasher.hash(payload.password),
+        account_status="disabled",
+    )
+    staff = StaffUser(
+        user=user,
         role=invitation.role,
         status="pending_mfa",
         mfa_secret_encrypted=encrypt_totp_secret(secret),
@@ -197,6 +206,7 @@ def confirm_enrollment(
         raise HTTPException(status_code=400, detail="The authenticator code is incorrect.")
     staff.mfa_enabled = True
     staff.status = "active"
+    staff.user.account_status = "active"
     staff.enrollment_token_hash = None
     staff.enrollment_expires_at = None
     staff.last_totp_step = step
@@ -213,12 +223,15 @@ def confirm_enrollment(
     )
     db.commit()
     db.refresh(staff)
-    return StaffAccount.from_staff(staff)
+    return StaffAccount.from_staff(staff, permissions_for(staff.role, db))
 
 
 @auth_router.get("/me", response_model=StaffAccount)
-def me(staff: StaffUser = Depends(require_staff)) -> StaffAccount:
-    return StaffAccount.from_staff(staff)
+def me(
+    staff: StaffUser = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> StaffAccount:
+    return StaffAccount.from_staff(staff, permissions_for(staff.role, db))
 
 
 @auth_router.get("/csrf")
@@ -285,15 +298,15 @@ def logout(
 
 
 @staff_router.get("/roles")
-def roles(staff: StaffUser = Depends(require_permission("staff.manage"))) -> list[dict]:
+def roles(
+    staff: StaffUser = Depends(require_permission("staff.manage")),
+    db: Session = Depends(get_db),
+) -> list[dict]:
     del staff
-    available_roles = {
-        "owner", "super_admin", "operations_manager", "finance_manager",
-        "customer_support", "inventory_officer", "agent_manager", "auditor",
-    }
+    available_roles = db.scalars(select(Role.name).order_by(Role.name)).all()
     return [
-        {"role": role, "permissions": sorted(permissions_for(role))}
-        for role in sorted(available_roles)
+        {"role": role, "permissions": sorted(permissions_for(role, db))}
+        for role in available_roles
     ]
 
 
@@ -317,8 +330,11 @@ def create_invitation(
         )
     if staff.role != "owner" and payload.role == "super_admin":
         raise HTTPException(status_code=403, detail="Only the owner can invite a Super Admin.")
-    if db.scalar(select(StaffUser.id).where(StaffUser.email == payload.email)):
-        raise HTTPException(status_code=409, detail="A staff account with this email already exists.")
+    if db.scalar(select(User.id).where(User.email == payload.email)):
+        raise HTTPException(
+            status_code=409,
+            detail="An account already uses this email. Existing accounts must be linked through the verified account-linking workflow.",
+        )
     active_invitation = db.scalar(
         select(StaffInvitation).where(
             StaffInvitation.email == payload.email,
@@ -384,7 +400,10 @@ def list_staff(
         resource_type="staff_collection", resource_id="all",
     )
     db.commit()
-    return [StaffAccount.from_staff(item) for item in staff_users]
+    return [
+        StaffAccount.from_staff(item, permissions_for(item.role, db))
+        for item in staff_users
+    ]
 
 
 router.include_router(auth_router)

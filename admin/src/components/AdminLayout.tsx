@@ -6,6 +6,7 @@ const links = [
   { to: "/", label: "Overview", permission: "dashboard.read" },
   { to: "/orders", label: "Orders", permission: "orders.read" },
   { to: "/customers", label: "Customers", permission: "customers.read" },
+  { to: "/catalogue", label: "Catalogue", permission: "catalogue.read" },
   { to: "/staff", label: "Staff access", permission: "staff.manage" },
   { to: "/audit", label: "Audit log", permission: "audit.read" },
 ];

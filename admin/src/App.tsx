@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "./auth/AuthContext";
 import { AdminLayout } from "./components/AdminLayout";
 import { AuditPage } from "./pages/AuditPage";
+import { CataloguePage } from "./pages/CataloguePage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { InvitePage } from "./pages/InvitePage";
@@ -39,6 +40,7 @@ export function App() {
         <Route index element={<PermissionRoute permission="dashboard.read"><DashboardPage /></PermissionRoute>} />
         <Route path="orders" element={<PermissionRoute permission="orders.read"><OrdersPage /></PermissionRoute>} />
         <Route path="customers" element={<PermissionRoute permission="customers.read"><CustomersPage /></PermissionRoute>} />
+        <Route path="catalogue" element={<PermissionRoute permission="catalogue.read"><CataloguePage /></PermissionRoute>} />
         <Route path="staff" element={<PermissionRoute permission="staff.manage"><StaffPage /></PermissionRoute>} />
         <Route path="audit" element={<PermissionRoute permission="audit.read"><AuditPage /></PermissionRoute>} />
       </Route>

@@ -55,6 +55,19 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 .bar-row b { color: #39465b; }
 .split-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #edf0f4; text-transform: capitalize; font-size: 13px; }
 .toolbar { background: white; border: 1px solid #e1e6ee; padding: 14px; border-radius: 10px; display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 16px; }
+.catalogue-toolbar { display: flex; flex-wrap: wrap; gap: 14px; margin: 18px 0 12px; }
+.catalogue-toolbar label, .network-status-list label { display: grid; gap: 6px; color: #5a6679; font-size: 12px; font-weight: 700; }
+.catalogue-toolbar input, .catalogue-toolbar select, .network-status-list input, .catalogue-form input, .catalogue-form textarea { min-height: 40px; border: 1px solid #d5dce6; border-radius: 7px; padding: 8px 10px; color: #1d2738; background: white; }
+.network-status-list label { margin-top: 16px; }
+.table-wrap { overflow-x: auto; background: white; border: 1px solid #e1e6ee; border-radius: 9px; }
+.catalogue-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 18px 0 28px; }
+.catalogue-form label { display: grid; gap: 6px; color: #5a6679; font-size: 12px; font-weight: 700; }
+.catalogue-form label.checkbox-field { display: flex; align-items: center; gap: 9px; }
+.catalogue-form .checkbox-field input { min-height: auto; }
+.catalogue-form .full-width { grid-column: 1 / -1; }
+.catalogue-form textarea { min-height: 78px; resize: vertical; }
+.catalogue-form button { border: 0; border-radius: 7px; background: #263f79; color: white; min-height: 42px; padding: 0 16px; font-weight: 700; }
+.note pre { max-width: 100%; overflow: auto; white-space: pre-wrap; color: #566276; font-size: 11px; }
 .toolbar label { flex: 1; }
 .toolbar label input, .toolbar label select { min-width: 120px; }
 .toolbar button, .invite-form button, .inline-form button, .auth-card button { border: 0; border-radius: 7px; background: #263f79; color: white; min-height: 42px; padding: 0 16px; font-weight: 700; }
@@ -117,5 +130,7 @@ td small { margin-top: 4px; color: #79869a; line-height: 1.4; overflow-wrap: any
   .metric-card { min-height: 105px; padding: 13px; }
   .metric-card strong { font-size: 20px; }
   .detail-grid { grid-template-columns: repeat(2, 1fr); }
+  .catalogue-form { grid-template-columns: 1fr; }
+  .catalogue-form .full-width { grid-column: auto; }
   .auth-card { padding: 23px; }
 }

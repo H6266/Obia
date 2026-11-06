@@ -1,8 +1,16 @@
+import secrets
+
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func, select
 
 from app.core.database import get_db
 from app.main import app
+from app.models import Order
+
+
+def idempotency_headers() -> dict[str, str]:
+    return {"Idempotency-Key": secrets.token_urlsafe(24)}
 
 
 def order_payload(**overrides: str) -> dict[str, str]:
@@ -50,7 +58,9 @@ def test_unknown_bundle_returns_not_found(client: TestClient) -> None:
 
 
 def test_valid_order_is_persisted_pending_payment(client: TestClient) -> None:
-    response = client.post("/api/v1/orders", json=order_payload())
+    response = client.post(
+        "/api/v1/orders", json=order_payload(), headers=idempotency_headers()
+    )
     assert response.status_code == 201
     order = response.json()
     assert order["reference"].startswith("FLA-")
@@ -64,16 +74,48 @@ def test_valid_order_is_persisted_pending_payment(client: TestClient) -> None:
 
 
 def test_order_references_are_unique(client: TestClient) -> None:
-    first = client.post("/api/v1/orders", json=order_payload()).json()["reference"]
+    first = client.post(
+        "/api/v1/orders", json=order_payload(), headers=idempotency_headers()
+    ).json()["reference"]
     second = client.post(
         "/api/v1/orders",
         json=order_payload(phone="+233 20 123 4567"),
+        headers=idempotency_headers(),
     ).json()["reference"]
     assert first != second
 
 
+def test_order_creation_is_idempotent_and_rejects_key_reuse(
+    client: TestClient, db_session_factory
+) -> None:
+    headers = {"Idempotency-Key": secrets.token_urlsafe(24)}
+    payload = order_payload()
+    first = client.post("/api/v1/orders", json=payload, headers=headers)
+    retry = client.post("/api/v1/orders", json=payload, headers=headers)
+    assert first.status_code == retry.status_code == 201
+    assert retry.json()["reference"] == first.json()["reference"]
+
+    changed = client.post(
+        "/api/v1/orders",
+        json=order_payload(phone="0201234567"),
+        headers=headers,
+    )
+    assert changed.status_code == 409
+    with db_session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(Order)) == 1
+
+
+def test_order_creation_requires_a_strong_idempotency_key(client: TestClient) -> None:
+    response = client.post("/api/v1/orders", json=order_payload())
+    assert response.status_code == 422
+
+
 def test_invalid_phone_is_rejected(client: TestClient) -> None:
-    response = client.post("/api/v1/orders", json=order_payload(phone="0301234567"))
+    response = client.post(
+        "/api/v1/orders",
+        json=order_payload(phone="0301234567"),
+        headers=idempotency_headers(),
+    )
     assert response.status_code == 422
 
 
@@ -81,10 +123,12 @@ def test_unknown_network_and_bundle_are_rejected(client: TestClient) -> None:
     unknown_network = client.post(
         "/api/v1/orders",
         json=order_payload(network_id="unknown"),
+        headers=idempotency_headers(),
     )
     unknown_bundle = client.post(
         "/api/v1/orders",
         json=order_payload(bundle_id="telecel-sample-1gb"),
+        headers=idempotency_headers(),
     )
     assert unknown_network.status_code == 404
     assert unknown_bundle.status_code == 404
@@ -106,7 +150,9 @@ def test_customer_history_cannot_be_queried_by_phone(client: TestClient) -> None
 
 
 def test_public_users_cannot_mutate_order_status(client: TestClient) -> None:
-    order = client.post("/api/v1/orders", json=order_payload()).json()
+    order = client.post(
+        "/api/v1/orders", json=order_payload(), headers=idempotency_headers()
+    ).json()
     response = client.patch(
         f"/api/v1/orders/{order['reference']}",
         json={"status": "completed"},

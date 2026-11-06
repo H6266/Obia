@@ -1,3 +1,5 @@
+import secrets
+
 import pytest
 from pydantic import ValidationError
 
@@ -34,5 +36,6 @@ def test_unknown_network_does_not_create_order(client) -> None:
             "network_id": "unknown",
             "bundle_id": "mtn-sample-1gb",
         },
+        headers={"Idempotency-Key": secrets.token_urlsafe(24)},
     )
     assert response.status_code == 404

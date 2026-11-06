@@ -1,9 +1,11 @@
+import secrets
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from fastapi.testclient import TestClient
 
 from app.core.security import token_hash
-from app.models import AuthSession, Customer
+from app.models import AuthSession, Customer, User
 
 
 def registration_payload(**overrides: str) -> dict[str, str]:
@@ -35,10 +37,12 @@ def test_registration_creates_hashed_active_unverified_account_and_session(
     assert "HttpOnly" in response.headers["set-cookie"]
 
     with db_session_factory() as db:
-        customer = db.scalar(select(Customer).where(Customer.phone == account["phone"]))
+        customer = db.scalar(
+            select(Customer).join(User).where(User.phone == account["phone"])
+        )
         assert customer is not None
-        assert customer.password_hash != registration_payload()["password"]
-        assert customer.password_hash.startswith("$argon2id$")
+        assert customer.user.password_hash != registration_payload()["password"]
+        assert customer.user.password_hash.startswith("$argon2id$")
         assert client.get("/api/v1/auth/me").json()["id"] == account["id"]
 
 
@@ -95,10 +99,19 @@ def test_authenticated_order_is_owned_and_csrf_protected(client: TestClient) -> 
         "network_id": "mtn",
         "bundle_id": "mtn-sample-1gb",
     }
-    no_csrf = client.post("/api/v1/orders", json=payload)
+    key = secrets.token_urlsafe(24)
+    no_csrf = client.post(
+        "/api/v1/orders",
+        json=payload,
+        headers={"Idempotency-Key": key},
+    )
     assert no_csrf.status_code == 403
 
-    created = client.post("/api/v1/orders", json=payload, headers=csrf_header(client))
+    created = client.post(
+        "/api/v1/orders",
+        json=payload,
+        headers={**csrf_header(client), "Idempotency-Key": key},
+    )
     assert created.status_code == 201
     order = created.json()
     history = client.get("/api/v1/customers/me/orders")
@@ -117,6 +130,7 @@ def test_one_customer_cannot_see_another_customers_order_history(
             "network_id": "mtn",
             "bundle_id": "mtn-sample-1gb",
         },
+        headers={"Idempotency-Key": secrets.token_urlsafe(24)},
     )
     assert legacy_order.status_code == 201
     client.post("/api/v1/auth/register", json=registration_payload())
@@ -126,7 +140,11 @@ def test_one_customer_cannot_see_another_customers_order_history(
         "network_id": "mtn",
         "bundle_id": "mtn-sample-1gb",
     }
-    created = client.post("/api/v1/orders", json=payload, headers=csrf_header(client))
+    created = client.post(
+        "/api/v1/orders",
+        json=payload,
+        headers={**csrf_header(client), "Idempotency-Key": secrets.token_urlsafe(24)},
+    )
     assert created.status_code == 201
     client.post("/api/v1/auth/logout", headers=csrf_header(client))
 

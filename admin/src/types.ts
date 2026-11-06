@@ -1,5 +1,6 @@
 export type StaffAccount = {
   id: string;
+  identity_id: string;
   email: string;
   full_name: string;
   role: string;
@@ -29,6 +30,37 @@ export type DashboardMetrics = {
   orders_by_network: { network: string; orders: number }[];
   orders_by_status: { status: string; orders: number }[];
   data_availability: Record<string, string>;
+};
+
+export type CatalogueNetwork = {
+  id: string;
+  name: string;
+  short_name: string;
+  is_active: boolean;
+};
+
+export type CatalogueBundle = {
+  id: string;
+  network_id: string;
+  name: string;
+  size_gb: string;
+  amount: string;
+  currency: string;
+  is_sample: boolean;
+  is_available: boolean;
+  category: string;
+  validity_days: number | null;
+  updated_at: string;
+};
+
+export type CatalogueRevision = {
+  id: string;
+  bundle_id: string;
+  actor_email: string;
+  previous_value: Record<string, unknown>;
+  new_value: Record<string, unknown>;
+  reason: string;
+  created_at: string;
 };
 
 export type AdminOrder = {

@@ -14,23 +14,25 @@ The API owns order persistence and status transitions. The frontend calls it thr
 
 | Area | Current behavior |
 |---|---|
-| Database | PostgreSQL via `DATABASE_URL`; SQLAlchemy session management; Alembic migration creates catalogue/customer/order tables and clearly marked sample offers |
+| Database | PostgreSQL via `DATABASE_URL`; SQLAlchemy session management; Alembic through `0009_order_integrity` creates catalogue, identity, authorization, order, and audit structures while preserving existing records and clearly marked sample offers |
 | Health | `GET /api/v1/health` checks the database and reports `503` without exposing connection details if it is unavailable |
 | Catalogue | Lists MTN (`mtn`), Telecel (`telecel`), and AirtelTigo (`at`) and their available bundles; no live inventory is claimed |
-| Customer accounts | UUID customer records store full name, normalized unique Ghanaian phone, Argon2id password hash, verification/account status, role, and timestamps |
+| Customer accounts | A shared UUID `User` principal stores credentials and account status; a customer profile stores customer data and links to that principal. Guest profiles remain unlinked, and existing customer/staff credentials were backfilled to distinct users without automatic merging |
 | Authentication | Registration, login, logout, session profile, and CSRF-token endpoints; opaque random session tokens are hashed in the database and issued only as HttpOnly cookies |
 | Account protections | Login/registration throttles use database-backed windows; private APIs enforce the session, CSRF, and allowed-origin checks; login errors are generic |
 | Provider-dependent account features | Phone verification, resend, and password recovery/reset endpoints explicitly return unavailable until a real SMS/recovery provider and verified workflow are configured |
-| Order | `POST /api/v1/orders` validates phone/network/bundle, persists a cryptographically referenced order, and starts at `pending_payment` |
+| Order | `POST /api/v1/orders` validates phone/network/bundle, requires an idempotency key, persists a cryptographically referenced order, and starts at `pending_payment`; conflicting reuse is rejected |
+| Order integrity | Unique idempotency digest, positive amount, and a composite foreign key prevent mismatched bundle/network pairs; catalogue price snapshots remain unchanged when catalogue prices are edited |
 | Lookup | `GET /api/v1/orders/{reference}` returns recorded status and a masked recipient number |
 | History | `GET /api/v1/customers/me/orders` is scoped to the authenticated account owner; anonymous/legacy orders are not exposed by matching phone number |
 | State machine | Service logic restricts transitions across pending payment, payment processing, paid, fulfillment pending, processing, completed, failed, cancelled, and refunded; no public mutation endpoint exists |
 | Provider boundaries | Typed payment and fulfillment protocols define future integration points without initiating or recording provider activity |
 | Frontend | `/signup`, `/login`, `/dashboard`, and `/forgot-password` are wired to the API; route guards, session restoration, and actual logout are implemented |
 | Customer journey | The composer submits requests using the authenticated session; the dashboard shows real profile/history, and order lookup displays API status; loading, errors, empty states, and sample-only cases are explicit |
-| Staff identity | Separate staff users and sessions; customers cannot become staff through public signup; one Owner is initialized only through the interactive backend CLI |
-| Staff security | Argon2id passwords, mandatory TOTP MFA, encrypted TOTP secrets, one-time invitations, role/permission checks on every admin API, separate CSRF-protected HttpOnly cookies, and stricter database-backed login limits |
-| Owner/admin console | Separate `admin/` React/Vite app on port `5174`; real database-backed overview, date presets/custom range, orders centre, customer lookup/details/status controls, staff invitations, support notes/escalations, and audit history |
+| Staff identity | A staff profile and session link to the shared `User` principal; customers cannot become staff through public signup; one Owner is initialized only through the interactive backend CLI. There is no verified customer/staff account-linking flow yet |
+| Staff security | Argon2id passwords, mandatory TOTP MFA, encrypted TOTP secrets, one-time invitations, database-backed relational role/permission checks on every admin API, separate CSRF-protected HttpOnly cookies, and stricter database-backed login limits |
+| Catalogue management | Staff can search and paginate the catalogue, update bundle attributes and network activation with a reason, and read append-only revision history; every mutation is permission-checked and audited |
+| Owner/admin console | Separate `admin/` React/Vite app on port `5174`; real database-backed overview, date presets/custom range, orders centre, customer lookup/details/status controls, staff invitations, catalogue management, support notes/escalations, and audit history |
 | Operations safeguards | Financial metrics without verified records are explicitly unavailable; sample orders excluded from business metrics; sensitive customer phones masked by default; customer suspension requires a reason and revokes sessions |
 | Audit/history | Administrative audit records and order events are append-only in PostgreSQL; customer/order access and changes have actor, request ID, resource, time, and relevant reason/value records |
 | Local development | Docker Compose runs PostgreSQL and API; the API container applies migrations; Codespaces forwards customer `5173`, admin `5174`, and API `8000` |
@@ -85,6 +87,11 @@ docker-compose.yml
 | `GET` | `/api/v1/orders/{reference}` | Look up an order by unguessable reference |
 | `GET` | `/api/v1/customers/me` | Return the authenticated customer profile |
 | `GET` | `/api/v1/customers/me/orders` | Return only orders linked to the authenticated account |
+| `GET` | `/api/v1/admin/catalogue/networks` | Staff catalogue network list |
+| `PATCH` | `/api/v1/admin/catalogue/networks/{network_id}/status` | Permission-checked activation change with audit record |
+| `GET` | `/api/v1/admin/catalogue/bundles` | Paginated staff catalogue list |
+| `PATCH` | `/api/v1/admin/catalogue/bundles/{bundle_id}` | Permission-checked update with reason and immutable revision history |
+| `GET` | `/api/v1/admin/catalogue/bundles/{bundle_id}/history` | Catalogue revision history |
 | `POST` | `/api/v1/admin/auth/login` | Staff password + TOTP login; separate staff session cookie |
 | `POST` | `/api/v1/admin/auth/accept-invitation` | Accept one-time staff invite and begin MFA enrollment |
 | `POST` | `/api/v1/admin/auth/confirm-enrollment` | Verify MFA and activate invited staff |
@@ -120,7 +127,8 @@ The test suite covers health/database checks, phone validation, catalogue behavi
 
 - Connect an approved SMS provider before enabling phone verification/resend. Accounts remain explicitly phone-unverified; no OTP is generated or reported as sent.
 - Connect a verified messaging provider and implement expiring, single-use reset tokens before enabling password recovery. Recovery/reset endpoints report unavailable in the meantime.
-- Preserve the separate staff identity boundary and server-side permissions. Any future order-state action must be backed by verified payment/supplier evidence and must not be a manual status override.
+- Implement a verified account-linking flow before linking customer and staff profiles. Existing profiles remain linked to distinct `User` records until both accounts can be proven; phone verification requires an SMS provider.
+- Any future order-state action must be backed by verified payment/supplier evidence and must not be a manual status override.
 - Select a licensed payment provider and an approved supplier for each network only after reviewing their contracts, API documentation, sandbox behavior, callback authentication, idempotency, reconciliation, delivery, cancellation, refund, and dispute semantics.
 - Implement real payment and fulfillment adapters behind the typed provider interfaces. Record payment attempts only when real payment initiation exists; transition to `paid` only on a verified provider event; mark completion only after verified supplier delivery.
 - Establish production catalogue/pricing sources, operational monitoring/alerts, trusted-proxy configuration, retention/privacy policy, support workflows, and deployment/hosting region before launch.

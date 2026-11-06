@@ -8,7 +8,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import get_db
 from app.main import app
-from app.models import Base, Bundle, Network
+from app.models import Base, Bundle, Network, Permission, Role, RolePermission
+from app.services.admin_security import DEFAULT_ROLE_PERMISSION_GRANTS
 
 
 @pytest.fixture
@@ -22,6 +23,32 @@ def db_session_factory() -> Generator[sessionmaker[Session], None, None]:
     Base.metadata.create_all(engine)
 
     with TestingSession() as db:
+        permission_codes = {
+            permission
+            for permissions in DEFAULT_ROLE_PERMISSION_GRANTS.values()
+            for permission in permissions
+        }
+        for role_name in DEFAULT_ROLE_PERMISSION_GRANTS:
+            db.add(
+                Role(
+                    name=role_name,
+                    display_name=role_name.replace("_", " ").title(),
+                    description=f"{role_name.replace('_', ' ').title()} access",
+                )
+            )
+        for permission_code in permission_codes:
+            db.add(
+                Permission(
+                    code=permission_code,
+                    description=permission_code.replace(".", " ").replace("_", " ").title(),
+                )
+            )
+        db.flush()
+        for role_name, permissions in DEFAULT_ROLE_PERMISSION_GRANTS.items():
+            db.add_all(
+                RolePermission(role_name=role_name, permission_code=permission)
+                for permission in permissions
+            )
         for network_id, name, short_name in (
             ("mtn", "MTN", "MTN"),
             ("telecel", "Telecel", "Telecel"),

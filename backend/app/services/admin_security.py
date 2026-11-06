@@ -10,13 +10,13 @@ from typing import Annotated
 
 from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, Request, Response, status
-from sqlalchemy import or_, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import enforce_auth_rate_limit, require_allowed_origin, token_hash
-from app.models import AdminAuditLog, StaffSession, StaffUser
+from app.models import AdminAuditLog, RolePermission, StaffSession, StaffUser
 
 STAFF_ROLES = {
     "owner",
@@ -46,14 +46,16 @@ ALL_PERMISSIONS = {
     "refunds.approve",
     "agents.manage",
     "businesses.manage",
+    "catalogue.read",
+    "catalogue.manage",
 }
 
-ROLE_PERMISSIONS = {
+DEFAULT_ROLE_PERMISSION_GRANTS = {
     "owner": ALL_PERMISSIONS,
     "super_admin": ALL_PERMISSIONS,
     "operations_manager": {
         "dashboard.read", "orders.read", "orders.manage", "orders.notes",
-        "customers.read", "customers.read_sensitive",
+        "customers.read", "customers.read_sensitive", "catalogue.read",
     },
     "finance_manager": {
         "dashboard.read", "orders.read", "finance.read", "finance.reconcile",
@@ -71,8 +73,14 @@ ROLE_PERMISSIONS = {
 }
 
 
-def permissions_for(role: str) -> set[str]:
-    return ROLE_PERMISSIONS.get(role, set())
+def permissions_for(role: str, db: Session) -> set[str]:
+    return set(
+        db.scalars(
+            select(RolePermission.permission_code).where(
+                RolePermission.role_name == role
+            )
+        ).all()
+    )
 
 
 def encrypt_totp_secret(secret: str) -> str:
@@ -146,7 +154,12 @@ def get_staff_session(
         db.commit()
         return None
     staff = db.get(StaffUser, session.staff_user_id)
-    if staff is None or staff.status != "active" or not staff.mfa_enabled:
+    if (
+        staff is None
+        or staff.status != "active"
+        or not staff.mfa_enabled
+        or staff.user.account_status != "active"
+    ):
         return None
     return session, staff
 
@@ -159,8 +172,11 @@ def require_staff(request: Request, db: Session = Depends(get_db)) -> StaffUser:
 
 
 def require_permission(permission: str):
-    def dependency(staff: StaffUser = Depends(require_staff)) -> StaffUser:
-        if permission not in permissions_for(staff.role):
+    def dependency(
+        staff: StaffUser = Depends(require_staff),
+        db: Session = Depends(get_db),
+    ) -> StaffUser:
+        if permission not in permissions_for(staff.role, db):
             raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
         return staff
     return dependency

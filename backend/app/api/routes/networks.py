@@ -11,4 +11,8 @@ router = APIRouter(prefix="/networks", tags=["networks"])
 
 @router.get("", response_model=list[NetworkRead])
 def list_networks(db: Session = Depends(get_db)) -> list[Network]:
-    return list(db.scalars(select(Network).order_by(Network.id)).all())
+    return list(
+        db.scalars(
+            select(Network).where(Network.is_active.is_(True)).order_by(Network.id)
+        ).all()
+    )

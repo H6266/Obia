@@ -7,8 +7,8 @@ Falaaa is a responsive Ghanaian mobile-data marketplace prototype for MTN, Telec
 - **Frontend:** React 19, TypeScript, Vite, and React Router.
 - **Operations frontend:** Separate React 19, TypeScript, Vite app under `admin/`; it has no independent database or business rules.
 - **Backend:** Python 3.12+, FastAPI, Pydantic Settings, SQLAlchemy 2, and Alembic.
-- **Account security:** Customer and staff identities are separate; passwords use Argon2id, staff requires TOTP MFA, and opaque database-backed HttpOnly sessions use CSRF validation and database-backed rate limits.
-- **Database:** PostgreSQL for local/deployed use; SQLite in automated API tests.
+- **Account security:** A shared `User` principal holds credentials and account state; customer and staff profiles remain distinct and existing accounts are not automatically merged. Passwords use Argon2id, staff requires TOTP MFA, and opaque database-backed HttpOnly sessions use CSRF validation and database-backed rate limits.
+- **Database:** PostgreSQL for local/deployed use; SQLite in automated API tests. Alembic migrations through `0009_order_integrity` provide shared identities, relational staff roles/permissions, catalogue revision history, order idempotency, and order-to-catalogue integrity.
 - **Tests:** Vitest for frontend utilities and pytest for the backend.
 - **API boundaries:** The API owns catalogue reads, customer records, order creation, order lookup, and controlled internal order-state transitions. The frontend only submits requests and displays API responses.
 
@@ -87,7 +87,7 @@ The command refuses if an Owner already exists, prompts for an Argon2id password
 
 Roles enforced by FastAPI include Owner, Super Admin, Operations Manager, Finance Manager, Customer Support, Inventory Officer, Agent Manager, and Auditor. The frontend hides inaccessible sections for usability, but each API endpoint independently checks permissions. Customer phone numbers are masked unless the role grants sensitive-data access. Customer status changes require a reason and revoke active customer sessions. Audit and order-event records are append-only in PostgreSQL.
 
-The initial operations console includes a real-data overview, searchable/filterable/paginated order centre, customer lookup and account controls, staff invitations, support notes/escalations, and audit history. Sample-catalogue orders are separated from business metrics. Requested order value is not described as revenue; verified revenue, margin, supplier, and inventory figures are unavailable until their evidence-backed ledgers and provider integrations exist.
+The initial operations console includes a real-data overview, searchable/filterable/paginated order centre, customer lookup and account controls, staff invitations, audited catalogue management, support notes/escalations, and audit history. Staff permissions are read from relational role/permission tables and enforced by the API. Sample-catalogue orders are separated from business metrics. Requested order value is not described as revenue; verified revenue, margin, supplier, and inventory figures are unavailable until their evidence-backed ledgers and provider integrations exist.
 
 Proposed production hosts `falaaa.com`, `admin.falaaa.com`, and `agents.falaaa.com` are deployment ideas only; no such domains or production setup are assumed. For a separately hosted admin/API pair, configure exact CORS origins, HTTPS, secure cookies, and `VITE_API_BASE_URL` for the admin API prefix `/api/v1/admin`.
 
@@ -126,10 +126,15 @@ The interactive API documentation is available at `http://localhost:8000/api/doc
 | `POST` | `/api/v1/auth/reset-password` | Rate-limited; unavailable until a verified reset-token workflow exists |
 | `POST` | `/api/v1/auth/verify-phone` | Authenticated phone verification endpoint; unavailable without SMS integration |
 | `POST` | `/api/v1/auth/resend-verification` | Authenticated request; unavailable without SMS integration |
-| `POST` | `/api/v1/orders` | Create a purchase request |
+| `POST` | `/api/v1/orders` | Create a purchase request (`Idempotency-Key` required) |
 | `GET` | `/api/v1/orders/{reference}` | Retrieve order status using its unguessable reference |
 | `GET` | `/api/v1/customers/me` | Authenticated customer profile |
 | `GET` | `/api/v1/customers/me/orders` | Authenticated order history scoped to the session owner |
+| `GET` | `/api/v1/admin/catalogue/networks` | Staff catalogue network list |
+| `PATCH` | `/api/v1/admin/catalogue/networks/{network_id}/status` | Permission-checked network activation change with audit record |
+| `GET` | `/api/v1/admin/catalogue/bundles` | Paginated staff catalogue bundle list |
+| `PATCH` | `/api/v1/admin/catalogue/bundles/{bundle_id}` | Permission-checked bundle update with reason and revision history |
+| `GET` | `/api/v1/admin/catalogue/bundles/{bundle_id}/history` | Bundle catalogue revision history |
 
 Create a request with:
 
@@ -141,7 +146,7 @@ Create a request with:
 }
 ```
 
-The API validates Ghanaian mobile numbers with `phonenumbers`, normalizes them to E.164, validates catalogue IDs, creates/reuses a minimal customer record, and persists the new order as `pending_payment`. Order references are generated with cryptographic randomness. Lookup results expose only a masked phone number. There is deliberately no public order-status mutation endpoint; state transitions are validated by the backend service.
+The API validates Ghanaian mobile numbers with `phonenumbers`, normalizes them to E.164, validates catalogue IDs, creates/reuses a minimal customer record, and persists the new order as `pending_payment`. Send a fresh random `Idempotency-Key` header for each new purchase request and reuse it only when retrying that same request; the API stores a digest and rejects reuse for a different payload. Order references are generated with cryptographic randomness. Lookup results expose only a masked phone number. There is deliberately no public order-status mutation endpoint; state transitions are validated by the backend service. Database constraints also ensure an order's selected bundle belongs to its selected network and its amount is positive.
 
 The initial Alembic migration seeds one clearly marked **sample-only** bundle per supported network at an illustrative amount. These are development fixtures, not verified offers, production prices, supplier inventory, or a promise to fulfill orders. The frontend labels sample offers/orders and does not claim that payment or delivery occurred.
 
@@ -180,6 +185,7 @@ Backend tests use an in-memory SQLite database. To verify PostgreSQL connectivit
 - Phone OTP delivery and verification are **unavailable** until an SMS provider is selected, configured, and verified. Accounts are explicitly marked phone-unverified; no OTP appears in responses or logs.
 - Password recovery/reset returns an unavailable response until a real recovery provider and single-use reset-token workflow are integrated; the UI does not claim a recovery message was sent.
 - The Stage 1 staff console does not yet include inventory, supplier, payment/finance/refund, agent, business-customer, alert, export, or configurable second-person approval workflows. Customer auth does not grant admin access.
+- Customer and staff profiles now share a canonical `User` identity record, but there is no verified account-linking workflow. Existing customer and staff accounts were backfilled independently, without automatic merging; phone verification is unavailable until an SMS provider is configured.
 - Staff onboarding requires a configured `STAFF_MFA_ENCRYPTION_KEY`; staff invitation delivery is manual. TOTP secret encryption depends on securely backing up this key.
 - No payment provider, supplier API, verified payment ledger, revenue/profit basis, or stock ledger exists. The operations app correctly shows these metrics as unavailable instead of treating order requests as financial results.
 - The default development cookie is non-Secure for localhost. Production requires HTTPS and `SESSION_COOKIE_SECURE=true`; select `SameSite` based on deployment topology.

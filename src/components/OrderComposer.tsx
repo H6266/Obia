@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { networks, type NetworkId } from "../data/networks";
 import { createOrder, getBundles, type Bundle, type PurchaseOrder } from "../lib/api";
@@ -16,6 +16,7 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [createdOrder, setCreatedOrder] = useState<PurchaseOrder | null>(null);
+  const idempotencyKey = useRef<string | null>(null);
   const selectedNetwork = networks.find((item) => item.id === network);
   const selectedBundle = bundles.find((item) => item.id === bundleId);
   const phoneIsValid = isValidGhanaPhone(phone);
@@ -64,11 +65,13 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
     setSubmitError("");
     setCreatedOrder(null);
     try {
+      idempotencyKey.current ??= crypto.randomUUID();
       const order = await createOrder({
         phone,
         network_id: network,
         bundle_id: selectedBundle.id,
-      });
+      }, idempotencyKey.current);
+      idempotencyKey.current = null;
       setCreatedOrder(order);
     } catch (error) {
       setSubmitError(
@@ -107,6 +110,7 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
           value={network}
           onChange={(value) => {
             setNetwork(value);
+            idempotencyKey.current = null;
             setCreatedOrder(null);
             setSubmitError("");
           }}
@@ -129,6 +133,7 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
               maxLength={18}
               onChange={(event) => {
                 setPhone(event.target.value);
+                idempotencyKey.current = null;
                 setCreatedOrder(null);
                 setSubmitError("");
               }}
@@ -153,6 +158,7 @@ export function OrderComposer({ agentMode = false }: { agentMode?: boolean }) {
               id={agentMode ? "agent-bundle" : "bundle-choice"}
               onChange={(event) => {
                 setBundleId(event.target.value);
+                idempotencyKey.current = null;
                 setCreatedOrder(null);
                 setSubmitError("");
               }}

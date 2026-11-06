@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -12,5 +13,8 @@ class BundleRead(BaseModel):
     currency: str
     is_sample: bool
     is_available: bool
+    category: str
+    validity_days: int | None
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

@@ -9,20 +9,22 @@ from sqlalchemy import (
     Integer,
     JSON,
     String,
+    ForeignKey,
     UniqueConstraint,
     Uuid,
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.models.authorization import Role
 from app.models.base import Base
 
 
 class StaffUser(Base):
     __tablename__ = "staff_users"
     __table_args__ = (
-        UniqueConstraint("email"),
+        UniqueConstraint("user_id", name="uq_staff_users_user_id"),
         Index(
             "uq_staff_single_owner",
             "role",
@@ -33,10 +35,12 @@ class StaffUser(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(254), index=True, nullable=False)
-    full_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(
+        String(32), ForeignKey("roles.name", ondelete="RESTRICT"), nullable=False
+    )
     status: Mapped[str] = mapped_column(String(24), default="pending_mfa", nullable=False)
     mfa_secret_encrypted: Mapped[str | None] = mapped_column(String(512), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -49,6 +53,20 @@ class StaffUser(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+    user: Mapped["User"] = relationship(back_populates="staff_profile")
+    role_record: Mapped[Role] = relationship()
+
+    @property
+    def email(self) -> str:
+        return self.user.email or ""
+
+    @property
+    def full_name(self) -> str:
+        return self.user.full_name
+
+    @property
+    def password_hash(self) -> str:
+        return self.user.password_hash
 
 
 class StaffSession(Base):
@@ -152,4 +170,22 @@ class OrderEscalation(Base):
     status: Mapped[str] = mapped_column(String(24), default="open", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CatalogueRevision(Base):
+    __tablename__ = "catalogue_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bundle_id: Mapped[str] = mapped_column(
+        ForeignKey("bundles.id", ondelete="RESTRICT"), index=True, nullable=False
+    )
+    changed_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("staff_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    previous_value: Mapped[dict] = mapped_column(JSON, nullable=False)
+    new_value: Mapped[dict] = mapped_column(JSON, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True, nullable=False
     )

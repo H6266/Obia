@@ -1,6 +1,9 @@
 import type {
   AdminOrder,
   AuditRecord,
+  CatalogueBundle,
+  CatalogueNetwork,
+  CatalogueRevision,
   Customer,
   CustomerDetail,
   DashboardMetrics,
@@ -126,6 +129,31 @@ export const api = {
   },
   invite(payload: { email: string; full_name: string; role: string }): Promise<Invitation> {
     return request("/staff/invitations", { method: "POST", body: JSON.stringify(payload) });
+  },
+  catalogueNetworks(): Promise<CatalogueNetwork[]> {
+    return request("/catalogue/networks");
+  },
+  catalogueBundles(params: URLSearchParams): Promise<Page<CatalogueBundle>> {
+    return request(`/catalogue/bundles?${params.toString()}`);
+  },
+  updateBundle(id: string, payload: Record<string, unknown>): Promise<CatalogueBundle> {
+    return request(`/catalogue/bundles/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  bundleHistory(id: string): Promise<CatalogueRevision[]> {
+    return request(`/catalogue/bundles/${encodeURIComponent(id)}/history`);
+  },
+  updateNetworkStatus(
+    id: string,
+    is_active: boolean,
+    reason: string,
+  ): Promise<CatalogueNetwork> {
+    return request(`/catalogue/networks/${encodeURIComponent(id)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active, reason }),
+    });
   },
   acceptInvitation(token: string, password: string): Promise<{
     enrollment_token: string;

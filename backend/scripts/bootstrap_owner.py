@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
-from app.models import AdminAuditLog, StaffUser
+from app.models import AdminAuditLog, StaffUser, User
 from app.services.admin_security import (
     encrypt_totp_secret,
     new_totp_code,
@@ -43,7 +43,7 @@ def main() -> int:
         if len(password) < 14 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
             print("Password must be at least 14 characters and contain a letter and a number.", file=sys.stderr)
             return 2
-        if db.scalar(select(StaffUser.id).where(StaffUser.email == email)):
+        if db.scalar(select(User.id).where(User.email == email)):
             print("A staff account already uses this email.", file=sys.stderr)
             return 2
 
@@ -61,17 +61,22 @@ def main() -> int:
             print("Authenticator code did not verify; no owner was created.", file=sys.stderr)
             return 2
 
-        owner = StaffUser(
-            id=uuid.uuid4(),
+        user = User(
             email=email,
             full_name=full_name,
             password_hash=PasswordHasher().hash(password),
+            account_status="active",
+        )
+        owner = StaffUser(
+            id=uuid.uuid4(),
+            user=user,
             role="owner",
             status="active",
             mfa_secret_encrypted=encrypt_totp_secret(secret),
             mfa_enabled=True,
             last_totp_step=step,
         )
+        db.add(user)
         db.add(owner)
         db.add(
             AdminAuditLog(

@@ -94,6 +94,7 @@ class PhoneVerificationRequest(BaseModel):
 
 class CustomerAccount(BaseModel):
     id: UUID
+    identity_id: UUID
     full_name: str
     phone: str
     phone_verified: bool

@@ -3,7 +3,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Numeric,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -23,6 +33,20 @@ class OrderStatus(str, enum.Enum):
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["bundle_id", "network_id"],
+            ["bundles.id", "bundles.network_id"],
+            name="fk_orders_bundle_network",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("amount > 0", name="positive_order_amount"),
+        Index(
+            "uq_orders_idempotency_key_hash",
+            "idempotency_key_hash",
+            unique=True,
+        ),
+    )
 
     reference: Mapped[str] = mapped_column(String(48), primary_key=True)
     customer_id: Mapped[uuid.UUID] = mapped_column(
@@ -40,6 +64,8 @@ class Order(Base):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    idempotency_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[OrderStatus] = mapped_column(
         Enum(
             OrderStatus,
@@ -66,5 +92,5 @@ class Order(Base):
     customer: Mapped["Customer"] = relationship(
         back_populates="orders", foreign_keys=[customer_id]
     )
-    bundle: Mapped["Bundle"] = relationship()
+    bundle: Mapped["Bundle"] = relationship(foreign_keys=[bundle_id])
     network: Mapped["Network"] = relationship()

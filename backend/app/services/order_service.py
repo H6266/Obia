@@ -1,10 +1,14 @@
+import hashlib
+import json
 import secrets
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Bundle, Customer, Network, Order, OrderEvent, OrderStatus
+from app.models import Bundle, Customer, Network, Order, OrderEvent, OrderStatus, User
+from app.core.security import token_hash
 from app.schemas.customer import normalize_ghana_phone
 from app.schemas.order import OrderCreate
 
@@ -45,21 +49,61 @@ class InvalidStatusTransition(Exception):
     pass
 
 
+class IdempotencyConflict(Exception):
+    pass
+
+
+def _existing_idempotent_order(
+    db: Session, key_hash: str, fingerprint: str
+) -> Order | None:
+    existing = db.scalar(
+        select(Order).where(Order.idempotency_key_hash == key_hash)
+    )
+    if existing is not None and existing.request_fingerprint != fingerprint:
+        raise IdempotencyConflict("The idempotency key was already used for a different request.")
+    return existing
+
+
 def create_order(
-    db: Session, request: OrderCreate, owner: Customer | None = None
+    db: Session,
+    request: OrderCreate,
+    idempotency_key: str,
+    owner: Customer | None = None,
 ) -> Order:
+    phone = normalize_ghana_phone(request.phone)
+    key_hash = token_hash(idempotency_key)
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "bundle_id": request.bundle_id,
+                "network_id": request.network_id,
+                "owner_id": str(owner.id) if owner else None,
+                "phone": phone,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    existing = _existing_idempotent_order(db, key_hash, fingerprint)
+    if existing is not None:
+        return existing
+
     network = db.get(Network, request.network_id)
-    if network is None:
+    if network is None or not network.is_active:
         raise LookupError("Unknown network.")
 
     bundle = db.get(Bundle, request.bundle_id)
     if bundle is None or bundle.network_id != network.id or not bundle.is_available:
         raise LookupError("Bundle is not available for the selected network.")
 
-    phone = normalize_ghana_phone(request.phone)
-    customer = owner or db.scalar(select(Customer).where(Customer.phone == phone))
+    customer = owner or db.scalar(
+        select(Customer)
+        .outerjoin(User, Customer.user_id == User.id)
+        .where(or_(Customer.guest_phone == phone, User.phone == phone))
+    )
     if customer is None:
-        customer = Customer(phone=phone)
+        customer = Customer(guest_phone=phone)
         db.add(customer)
         db.flush()
 
@@ -73,6 +117,8 @@ def create_order(
         amount=bundle.amount,
         currency=bundle.currency,
         status=OrderStatus.PENDING_PAYMENT,
+        idempotency_key_hash=key_hash,
+        request_fingerprint=fingerprint,
     )
     db.add(order)
     db.add(
@@ -86,7 +132,14 @@ def create_order(
             details={"payment_status": "unverified", "fulfillment_status": "not_started"},
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = _existing_idempotent_order(db, key_hash, fingerprint)
+        if existing is None:
+            raise
+        return existing
     db.refresh(order)
     return order
 

@@ -28,7 +28,7 @@ def get_active_session(
         return None
     session = db.scalar(
         select(AuthSession)
-        .options(joinedload(AuthSession.customer))
+        .options(joinedload(AuthSession.customer).joinedload(Customer.user))
         .where(AuthSession.id == token_hash(token))
     )
     if session is None:
@@ -40,7 +40,7 @@ def get_active_session(
         db.delete(session)
         db.commit()
         return None
-    if session.customer.account_status != "active":
+    if session.customer.user is None or session.customer.user.account_status != "active":
         return None
     return session, session.customer
 

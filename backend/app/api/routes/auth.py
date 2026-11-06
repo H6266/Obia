@@ -5,7 +5,7 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -17,7 +17,7 @@ from app.core.security import (
     require_csrf_for_session,
     require_allowed_origin,
 )
-from app.models import Customer
+from app.models import Customer, User
 from app.schemas.customer import (
     CustomerAccount,
     LoginRequest,
@@ -56,21 +56,34 @@ def register(
     db: Session = Depends(get_db),
 ) -> Customer:
     rate_limit(request, db)
-    customer = db.scalar(select(Customer).where(Customer.phone == payload.phone))
-    if customer is not None and customer.password_hash is not None:
+    customer = db.scalar(
+        select(Customer).where(Customer.guest_phone == payload.phone)
+    )
+    existing_user = db.scalar(select(User).where(User.phone == payload.phone))
+    if customer is not None and customer.user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this phone number already exists.",
+        )
+    if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this phone number already exists.",
         )
     if customer is None:
-        customer = Customer(phone=payload.phone)
+        customer = Customer(guest_phone=payload.phone)
         db.add(customer)
 
-    customer.full_name = payload.full_name
-    customer.password_hash = password_hasher.hash(payload.password)
-    customer.phone_verified = False
-    customer.account_status = "active"
-    customer.role = "customer"
+    user = User(
+        phone=payload.phone,
+        full_name=payload.full_name,
+        password_hash=password_hasher.hash(payload.password),
+        phone_verified=False,
+        account_status="active",
+    )
+    customer.user = user
+    customer.guest_phone = None
+    db.add(user)
     try:
         db.commit()
         db.refresh(customer)
@@ -96,8 +109,13 @@ def login(
     db: Session = Depends(get_db),
 ) -> Customer:
     rate_limit(request, db)
-    customer = db.scalar(select(Customer).where(Customer.phone == payload.phone))
-    password_hash = customer.password_hash if customer and customer.password_hash else dummy_password_hash
+    user = db.scalar(
+        select(User)
+        .options(joinedload(User.customer_profile))
+        .where(User.phone == payload.phone)
+    )
+    customer = user.customer_profile if user else None
+    password_hash = user.password_hash if user else dummy_password_hash
     try:
         password_matches = password_hasher.verify(password_hash, payload.password)
     except (InvalidHashError, VerificationError, VerifyMismatchError):
@@ -105,17 +123,17 @@ def login(
 
     if (
         not password_matches
+        or user is None
         or customer is None
-        or customer.password_hash is None
-        or customer.account_status != "active"
+        or user.account_status != "active"
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Phone number or password is incorrect.",
             headers={"WWW-Authenticate": "Cookie"},
         )
-    if password_hasher.check_needs_rehash(customer.password_hash):
-        customer.password_hash = password_hasher.hash(payload.password)
+    if password_hasher.check_needs_rehash(user.password_hash):
+        user.password_hash = password_hasher.hash(payload.password)
         db.commit()
     create_session(db, customer, response)
     return customer

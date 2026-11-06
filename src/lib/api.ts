@@ -27,6 +27,7 @@ export type PurchaseOrder = {
 
 export type CustomerAccount = {
   id: string;
+  identity_id: string;
   full_name: string;
   phone: string;
   phone_verified: boolean;
@@ -149,8 +150,15 @@ export function getApiHealth(): Promise<ApiHealth> {
   return request("/health");
 }
 
-export function createOrder(order: CreateOrderRequest): Promise<PurchaseOrder> {
-  return request("/orders", { method: "POST", body: JSON.stringify(order) });
+export function createOrder(
+  order: CreateOrderRequest,
+  idempotencyKey: string,
+): Promise<PurchaseOrder> {
+  return request("/orders", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(order),
+  });
 }
 
 export function getOrder(reference: string): Promise<PurchaseOrder> {

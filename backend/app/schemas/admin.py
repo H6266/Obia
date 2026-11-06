@@ -4,9 +4,7 @@ from decimal import Decimal
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from app.services.admin_security import permissions_for
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 StaffRole = Literal[
     "super_admin",
@@ -35,6 +33,7 @@ class StaffLoginRequest(BaseModel):
 
 class StaffAccount(BaseModel):
     id: uuid.UUID
+    identity_id: uuid.UUID
     email: str
     full_name: str
     role: str
@@ -46,16 +45,17 @@ class StaffAccount(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_staff(cls, staff) -> "StaffAccount":
+    def from_staff(cls, staff, permissions: set[str]) -> "StaffAccount":
         return cls(
             id=staff.id,
+            identity_id=staff.user_id,
             email=staff.email,
             full_name=staff.full_name,
             role=staff.role,
             status=staff.status,
             mfa_enabled=staff.mfa_enabled,
             created_at=staff.created_at,
-            permissions=sorted(permissions_for(staff.role)),
+            permissions=sorted(permissions),
         )
 
 
@@ -219,6 +219,84 @@ class AdminCustomerDetail(AdminCustomerRead):
 class CustomerStatusRequest(BaseModel):
     status: Literal["active", "suspended"]
     reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("A reason is required.")
+        return normalized
+
+
+class BundleUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    size_gb: Decimal | None = Field(default=None, gt=0, max_digits=8, decimal_places=2)
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    category: str | None = Field(default=None, min_length=2, max_length=32)
+    validity_days: int | None = Field(default=None, gt=0)
+    is_available: bool | None = None
+    reason: str = Field(min_length=3, max_length=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name", "category")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        return " ".join(value.split()) if value is not None else None
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("A reason is required.")
+        return normalized
+
+    @field_validator("currency")
+    @classmethod
+    def normalize_currency(cls, value: str | None) -> str | None:
+        return value.upper() if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_changes(self) -> "BundleUpdateRequest":
+        fields = self.model_fields_set - {"reason"}
+        if not fields:
+            raise ValueError("At least one catalogue field must be provided.")
+        if any(
+            getattr(self, field) is None
+            for field in fields
+            if field != "validity_days"
+        ):
+            raise ValueError("Catalogue fields cannot be cleared with null.")
+        return self
+
+    def changed_fields(self) -> set[str]:
+        return self.model_fields_set - {"reason"}
+
+
+class NetworkStatusRequest(BaseModel):
+    is_active: bool
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 3:
+            raise ValueError("A reason is required.")
+        return normalized
+
+
+class CatalogueRevisionRead(BaseModel):
+    id: uuid.UUID
+    bundle_id: str
+    actor_email: str
+    previous_value: dict
+    new_value: dict
+    reason: str
+    created_at: datetime
 
 
 class AdminAuditRead(BaseModel):
